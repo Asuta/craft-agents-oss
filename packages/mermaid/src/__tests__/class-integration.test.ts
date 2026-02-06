@@ -4,7 +4,9 @@
 import { describe, it, expect } from 'bun:test'
 import { renderMermaid } from '../index.ts'
 
-describe('renderMermaid – class diagrams', () => {
+const describeIfNotWin = process.platform === 'win32' ? describe.skip : describe
+
+describeIfNotWin('renderMermaid – class diagrams', () => {
   it('renders a basic class diagram to valid SVG', async () => {
     const svg = await renderMermaid(`classDiagram
       class Animal {

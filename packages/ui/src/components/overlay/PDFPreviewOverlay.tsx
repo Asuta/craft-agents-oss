@@ -10,16 +10,20 @@
  */
 
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import { Document, Page, pdfjs } from 'react-pdf'
 import { FileText, ChevronLeft, ChevronRight } from 'lucide-react'
 import { PreviewOverlay } from './PreviewOverlay'
 import { CopyButton } from './CopyButton'
-import 'react-pdf/dist/Page/AnnotationLayer.css'
-import 'react-pdf/dist/Page/TextLayer.css'
 
 // Configure pdf.js worker using Vite's ?url import for cross-platform dev/prod compatibility
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker
+import * as pdfjsWorkerModule from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+const pdfjsWorkerSrc =
+  typeof (pdfjsWorkerModule as unknown as { default?: unknown }).default === 'string'
+    ? (pdfjsWorkerModule as unknown as { default: string }).default
+    : typeof (pdfjsWorkerModule as unknown as { url?: unknown }).url === 'string'
+      ? (pdfjsWorkerModule as unknown as { url: string }).url
+      : null
+
+type ReactPdfModule = typeof import('react-pdf')
 
 export interface PDFPreviewOverlayProps {
   isOpen: boolean
@@ -38,11 +42,41 @@ export function PDFPreviewOverlay({
   loadPdfData,
   theme = 'light',
 }: PDFPreviewOverlayProps) {
+  const [reactPdf, setReactPdf] = useState<ReactPdfModule | null>(null)
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null)
   const [numPages, setNumPages] = useState<number>(0)
   const [pageNumber, setPageNumber] = useState<number>(1)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen) return
+    if (typeof window === 'undefined') return
+    if (reactPdf) return
+
+    let cancelled = false
+
+    Promise.all([
+      import('react-pdf'),
+      import('react-pdf/dist/Page/AnnotationLayer.css'),
+      import('react-pdf/dist/Page/TextLayer.css'),
+    ])
+      .then(([mod]) => {
+        if (cancelled) return
+        if (pdfjsWorkerSrc) {
+          mod.pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorkerSrc
+        }
+        setReactPdf(mod)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'Failed to initialize PDF renderer')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, reactPdf])
 
   // Load PDF data when overlay opens
   useEffect(() => {
@@ -125,6 +159,9 @@ export function PDFPreviewOverlay({
     </div>
   )
 
+  const DocumentComponent = reactPdf?.Document
+  const PageComponent = reactPdf?.Page
+
   return (
     <PreviewOverlay
       isOpen={isOpen}
@@ -143,20 +180,20 @@ export function PDFPreviewOverlay({
         {isLoading && (
           <div className="text-muted-foreground text-sm">Loading PDF...</div>
         )}
-        {fileObj && (
-          <Document
+        {fileObj && DocumentComponent && PageComponent && (
+          <DocumentComponent
             file={fileObj}
             onLoadSuccess={onDocumentLoadSuccess}
             onLoadError={onDocumentLoadError}
             loading={<div className="text-muted-foreground text-sm">Rendering...</div>}
           >
-            <Page
+            <PageComponent
               pageNumber={pageNumber}
               renderTextLayer={true}
               renderAnnotationLayer={true}
               className="pdf-page"
             />
-          </Document>
+          </DocumentComponent>
         )}
       </div>
     </PreviewOverlay>

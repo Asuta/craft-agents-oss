@@ -1,0 +1,398 @@
+"Name","Id","Description"
+"adb","17588",
+"AggregatorHost","2304",
+"aimgr","38204","Local AI Manager for Microsoft 365 and Platform x64."
+"AppActions","33516",
+"audiodg","43496",
+"backgroundTaskHost","15920","Background Task Host"
+"ChsIME","19920",
+"Clash for Windows","24956","Clash for Windows"
+"Clash for Windows","25072","Clash for Windows"
+"Clash for Windows","25112","Clash for Windows"
+"Clash for Windows","25132","Clash for Windows"
+"clash-core-service","11908",
+"clash-win64","14616",
+"Client","10652","Client.exe"
+"Client","17944","Client.exe"
+"Client","32232","Client.exe"
+"Client","37320","Client.exe"
+"Client","37356","Client.exe"
+"Client","39200","Client.exe"
+"cmd","4560","Windows Command Processor"
+"cmd","6436","Windows Command Processor"
+"cmd","35024","Windows Command Processor"
+"cmd","35092","Windows Command Processor"
+"cmd","41612","Windows Command Processor"
+"CodePatcherCLI","22984","CodePatcherCLI"
+"codex","32792","codex-windows-sandbox"
+"codex","34380","codex-windows-sandbox"
+"conhost","6396","Console Window Host"
+"conhost","7076","Console Window Host"
+"conhost","7656",
+"conhost","10116","Console Window Host"
+"conhost","10236",
+"conhost","11916",
+"conhost","16960",
+"conhost","19028","Console Window Host"
+"conhost","21548","Console Window Host"
+"conhost","22412","Console Window Host"
+"conhost","26128","Console Window Host"
+"conhost","28000","Console Window Host"
+"conhost","29100","Console Window Host"
+"conhost","29308","Console Window Host"
+"conhost","34152","Console Window Host"
+"conhost","34776","Console Window Host"
+"conhost","35524","Console Window Host"
+"conhost","39340","Console Window Host"
+"conhost","40348","Console Window Host"
+"conhost","40828","Console Window Host"
+"conhost","42324","Console Window Host"
+"ControllerCompanion","26616",
+"crashpad_handler","16516",""
+"csrss","1528",
+"csrss","1640",
+"ctfmon","14112",
+"dasHost","9976",
+"dllhost","6208","COM Surrogate"
+"DSAService","5704",
+"DSATray","2900","Intel Driver & Support Assistant Tray"
+"DSAUpdateService","5692",
+"dwm","2080",
+"ElcMouseApl","20608","ElcMouseApl"
+"esrv","27912",""
+"esrv_svc","15156",
+"Everything","5728",
+"Everything","26444","Everything"
+"explorer","12544","Windows Explorer"
+"FileCoAuth","24152","Microsoft OneDriveFile Co-Authoring Executable"
+"FileSyncHelper","4816",
+"fontdrvhost","1984",
+"fontdrvhost","1992",
+"GameBarPresenceWriter","32616","Gamebar Presence Writer"
+"gamingservices","11084",
+"gamingservicesnet","11052",
+"Idle","0",
+"Intel_PIE_Service","11460",
+"IntelAudioService","5788",
+"IntelCpHDCPSvc","2872",
+"IntelGraphicsSoftware","5360","Intel? Graphics Software"
+"IntelGraphicsSoftware.Service","5816",
+"ipf_helper","10008","Intel(R) Innovation Platform Framework Utility Application"
+"ipf_uf","6772",
+"ipfsvc","6104",
+"ipfsvc","6264",
+"ipfsvc","6288",
+"jhi_service","5924",
+"LockApp","18832","LockApp.exe"
+"LsaIso","1780",
+"lsass","1792",
+"Memory Compression","4036",
+"MicrosoftSecurityApp","25556","MicrosoftSecurityApp.exe"
+"MiService","5776",
+"MoNotificationUx","26512","Notifications host process"
+"MpDefenderCoreService","5808",
+"msedge","4020","Microsoft Edge"
+"msedge","7632","Microsoft Edge"
+"msedge","7644","Microsoft Edge"
+"msedge","10316","Microsoft Edge"
+"msedge","11440","Microsoft Edge"
+"msedge","13100","Microsoft Edge"
+"msedge","13900","Microsoft Edge"
+"msedge","15176","Microsoft Edge"
+"msedge","15504","Microsoft Edge"
+"msedge","16284","Microsoft Edge"
+"msedge","21388","Microsoft Edge"
+"msedge","30284","Microsoft Edge"
+"msedge","32472","Microsoft Edge"
+"msedge","32596","Microsoft Edge"
+"msedge","36844","Microsoft Edge"
+"msedge","36856","Microsoft Edge"
+"msedgewebview2","2552","Microsoft Edge WebView2"
+"msedgewebview2","3604","Microsoft Edge WebView2"
+"msedgewebview2","5372","Microsoft Edge WebView2"
+"msedgewebview2","8024","Microsoft Edge WebView2"
+"msedgewebview2","8120","Microsoft Edge WebView2"
+"msedgewebview2","8384","Microsoft Edge WebView2"
+"msedgewebview2","8632","Microsoft Edge WebView2"
+"msedgewebview2","15676","Microsoft Edge WebView2"
+"msedgewebview2","16056","Microsoft Edge WebView2"
+"msedgewebview2","16492","Microsoft Edge WebView2"
+"msedgewebview2","16928","Microsoft Edge WebView2"
+"msedgewebview2","16964","Microsoft Edge WebView2"
+"msedgewebview2","17060","Microsoft Edge WebView2"
+"msedgewebview2","21496","Microsoft Edge WebView2"
+"msedgewebview2","22796","Microsoft Edge WebView2"
+"msedgewebview2","23356","Microsoft Edge WebView2"
+"msedgewebview2","38584","Microsoft Edge WebView2"
+"MsMpEng","5800",
+"MSOfficePLUSService","5868",
+"MSPCManagerService","11068",
+"NgcIso","13556",
+"NisSrv","17420",
+"node","11468","Node.js JavaScript Runtime"
+"node","15800","Node.js JavaScript Runtime"
+"node","34680","Node.js JavaScript Runtime"
+"node","35436","Node.js JavaScript Runtime"
+"node","39080","Node.js JavaScript Runtime"
+"nvcontainer","5720",
+"nvcontainer","9596",
+"nvcontainer","9636",""
+"nvcontainer","9684",""
+"NVDisplay.Container","3640",
+"NVDisplay.Container","5088",
+"NVIDIA Overlay","6368","NVIDIA App"
+"NVIDIA Overlay","15140","NVIDIA App"
+"NVIDIA Overlay","17364","NVIDIA App"
+"NVIDIA Overlay","18540","NVIDIA App"
+"NVIDIA Overlay","19504","NVIDIA App"
+"nvsphelper64","17236",
+"OfficeClickToRun","6140",
+"OneApp.IGCC.WinService","5884",
+"OneDrive","12532","Microsoft OneDrive"
+"ONENOTE","36292","Microsoft OneNote"
+"ONENOTEM","21568","Send to OneNote Tool"
+"OVRRedir","9196",
+"OVRServer_x64","33136",""
+"OVRServiceLauncher","5712",
+"PhoneExperienceHost","22344","Microsoft Phone Link"
+"pocket_enhancement","26588",""
+"powershell","4612","Windows PowerShell"
+"powershell","23848","Windows PowerShell"
+"powershell","27960","Windows PowerShell"
+"powershell","36568","Windows PowerShell"
+"powershell","41104","Windows PowerShell"
+"powershell","41888","Windows PowerShell"
+"powershell","43824","Windows PowerShell"
+"PresentMonService","8164",
+"Registry","472",
+"RuntimeBroker","9660","Runtime Broker"
+"RuntimeBroker","15124","Runtime Broker"
+"RuntimeBroker","19812","Runtime Broker"
+"RuntimeBroker","21428","Runtime Broker"
+"RuntimeBroker","24492","Runtime Broker"
+"RuntimeBroker","36564","Runtime Broker"
+"SearchFilterHost","38924",
+"SearchFilterHost","40316",
+"SearchFilterHost","40372",
+"SearchHost","13720",""
+"SearchIndexer","18264",
+"SearchProtocolHost","40204",
+"Secure System","428",
+"SecurityHealthService","23236",
+"SecurityHealthSystray","23216","Windows Security notification icon"
+"SenaryAudioApp","14688","Senary Audio Application"
+"SenaryAudioApp.Svc","5912",
+"services","1716",
+"ShellExperienceHost","18980","Windows Shell Experience Host"
+"ShellHost","34904","ShellHost"
+"sihost","11548","Shell Infrastructure Host"
+"smss","1128",
+"spoolsv","5152",
+"StartMenuExperienceHost","14344","Windows Start Experience Host"
+"sunlogin_guard","10200",
+"SunloginClient","5656",
+"SunloginClient","10144",
+"SunloginClient","15768","SunloginClient 64 bit"
+"SurSvc","5684",
+"svchost","1112",
+"svchost","1240",
+"svchost","1936",
+"svchost","1944",
+"svchost","2068",
+"svchost","2504",
+"svchost","2512",
+"svchost","2568",
+"svchost","2576",
+"svchost","2588",
+"svchost","2732",
+"svchost","2772",
+"svchost","2780",
+"svchost","2788",
+"svchost","2888",
+"svchost","2928",
+"svchost","2948",
+"svchost","3140",
+"svchost","3160",
+"svchost","3304",
+"svchost","3560",
+"svchost","3620",
+"svchost","3772",
+"svchost","3776",
+"svchost","3872",
+"svchost","3884",
+"svchost","3892",
+"svchost","3900",
+"svchost","4092",
+"svchost","4120",
+"svchost","4228",
+"svchost","4268",
+"svchost","4396",
+"svchost","4568",
+"svchost","4576",
+"svchost","4688",
+"svchost","4760",
+"svchost","4968",
+"svchost","4996",
+"svchost","5200",
+"svchost","5272",
+"svchost","5452",
+"svchost","5464",
+"svchost","5480",
+"svchost","5536",
+"svchost","5564",
+"svchost","5616",
+"svchost","5624",
+"svchost","5632",
+"svchost","5644",
+"svchost","6940",
+"svchost","7088","Host Process for Windows Services"
+"svchost","7108",
+"svchost","7440",
+"svchost","10040",
+"svchost","10620",
+"svchost","10744",
+"svchost","10820",
+"svchost","10884",
+"svchost","11572","Host Process for Windows Services"
+"svchost","11596","Host Process for Windows Services"
+"svchost","11688","Host Process for Windows Services"
+"svchost","11736","Host Process for Windows Services"
+"svchost","12012",
+"svchost","12484",
+"svchost","12616",
+"svchost","13032",
+"svchost","13116",
+"svchost","13340",
+"svchost","13448",
+"svchost","13516",
+"svchost","13884","Host Process for Windows Services"
+"svchost","13960",
+"svchost","14364",
+"svchost","14792",
+"svchost","15116","Host Process for Windows Services"
+"svchost","16356",
+"svchost","18120",
+"svchost","18252","Host Process for Windows Services"
+"svchost","19616",
+"svchost","20256",
+"svchost","20660",
+"svchost","21472",
+"svchost","25824",
+"svchost","26036",
+"svchost","26160",
+"svchost","26312",
+"svchost","32888",
+"svchost","36208","Host Process for Windows Services"
+"svchost","38024",
+"System","4",
+"TabTip","31996",
+"taskhostw","11080","Host Process for Windows Tasks"
+"taskhostw","27832",
+"taskhostw","30732",
+"tasklist","24968","Lists the current running tasks"
+"tasklist","42052","Lists the current running tasks"
+"Taskmgr","22076",
+"test","33704",""
+"TextInputHost","22348",""
+"timer","8944",
+"timer","30880",
+"Trae","2468","Trae"
+"Trae","2944","Trae"
+"Trae","4316","Trae"
+"Trae","10600","Trae"
+"Trae","11560","Trae"
+"Trae","18620","Trae"
+"Trae","20764","Trae"
+"Trae","21168","Trae"
+"Trae","24596","Trae"
+"Trae","26080","Trae"
+"Trae","27812","Trae"
+"Trae","27920","Trae"
+"Trae","30148","Trae"
+"Trae","30152","Trae"
+"Trae","30236","Trae"
+"Trae","31856","Trae"
+"Trae","32452","Trae"
+"Trae","33112","Trae"
+"Trae","33648","Trae"
+"Trae","33688","Trae"
+"Trae","34888","Trae"
+"Trae","35652","Trae"
+"Trae","35672","Trae"
+"Trae","36060","Trae"
+"Trae","39684","Trae"
+"Trae","39892","Trae"
+"Trae","41620","Trae"
+"Trae","41848","Trae"
+"Trae","42800","Trae"
+"trae-sandbox","35364",
+"Typeless","6008","Typeless"
+"Typeless","7080","Typeless"
+"Typeless","12676","Typeless"
+"Typeless","23568","Typeless"
+"Typeless","23588","Typeless"
+"Typeless","23864","Typeless"
+"Typeless","24384","Typeless"
+"Typeless","24452","Typeless"
+"Unity","11716","Unity Editor"
+"Unity","26596","Unity Editor"
+"Unity","27948","Unity Editor"
+"Unity Hub","24712","Unity Hub"
+"Unity Hub","26712","Unity Hub"
+"Unity Hub","26936","Unity Hub"
+"Unity Hub","26968","Unity Hub"
+"Unity Hub","27452","Unity Hub"
+"Unity Hub","27524","Unity Hub"
+"Unity.ILPP.Runner","26468","Unity.ILPP.Runner"
+"Unity.Licensing.Client","26732","Unity.Licensing.Client"
+"UnityAutoQuitter","6064",
+"UnityAutoQuitter","32796",
+"UnityAutoQuitter","35036",
+"UnityCrashHandler64","27976",
+"UnityCrashHandler64","40740",
+"UnityCrashHandler64","40856",
+"UnityPackageManager","28236","Node.js JavaScript Runtime"
+"UnityShaderCompiler","3244","Unity Shader Compiler"
+"UnityShaderCompiler","28916","Unity Shader Compiler"
+"UnityShaderCompiler","30476","Unity Shader Compiler"
+"UnityShaderCompiler","30620","Unity Shader Compiler"
+"UnityShaderCompiler","34808","Unity Shader Compiler"
+"UnityShaderCompiler","40932","Unity Shader Compiler"
+"unsecapp","10588",
+"updater","12172","QuarkUpdater (x64)"
+"updater","32160","QuarkUpdater (x64)"
+"UserOOBEBroker","29416","User OOBE Broker"
+"VirtualDesktop.Service","5768",
+"WeChatAppEx","4472","WeChatAppEx"
+"WeChatAppEx","10376","WeChatAppEx"
+"WeChatAppEx","11512","WeChatAppEx"
+"WeChatAppEx","20740","WeChatAppEx"
+"WeChatAppEx","25928","WeChatAppEx"
+"WeChatAppEx","27292","WeChatAppEx"
+"WeChatAppEx","32072","WeChatAppEx"
+"WeChatAppEx","32588","WeChatAppEx"
+"WeChatAppEx","35180","WeChatAppEx"
+"WeChatAppEx","38804","WeChatAppEx"
+"WeChatAppEx","39728","WeChatAppEx"
+"WeChatAppEx","41692","WeChatAppEx"
+"Weixin","7948","Weixin"
+"Weixin","16480","Weixin"
+"Weixin","34248","Weixin"
+"Weixin","34300","Weixin"
+"Widgets","14964",""
+"WidgetService","14404","WidgetService.exe"
+"wininit","1656",
+"winlogon","1744",
+"wlanext","11336",
+"WmiPrvSE","8188",
+"WMIRegistrationService","5972",
+"wslservice","5896",
+"WUDFHost","2024",
+"WUDFHost","2156",
+"WUDFHost","2316",
+"WUDFHost","2416",
+"WUDFHost","4256",
+"WUDFHost","10048",
+"WUDFHost","10400",
+"XboxPcAppFT","23392","Xbox App"
+"XiaoaiService","5760",

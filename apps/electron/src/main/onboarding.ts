@@ -162,6 +162,63 @@ export function registerOnboardingHandlers(sessionManager: SessionManager): void
         }
       }
 
+      const existingProfiles = Array.isArray(newConfig.apiProfiles) ? newConfig.apiProfiles : []
+      let activeProfileId = typeof newConfig.activeApiProfileId === 'string' && newConfig.activeApiProfileId
+        ? newConfig.activeApiProfileId
+        : (existingProfiles[0]?.id ?? 'default')
+
+      let nextProfiles = existingProfiles
+      if (nextProfiles.length === 0) {
+        nextProfiles = [
+          {
+            id: activeProfileId,
+            name: 'Default',
+            authType: newConfig.authType,
+            ...(newConfig.anthropicBaseUrl ? { anthropicBaseUrl: newConfig.anthropicBaseUrl } : {}),
+            ...(newConfig.customModel ? { customModel: newConfig.customModel } : {}),
+          },
+        ]
+      }
+
+      if (!nextProfiles.some(p => p.id === activeProfileId)) {
+        activeProfileId = nextProfiles[0]?.id ?? 'default'
+      }
+
+      nextProfiles = nextProfiles.map(p => {
+        if (p.id !== activeProfileId) return p
+
+        let next = { ...p }
+
+        if (config.authType) {
+          next = { ...next, authType: config.authType }
+        }
+
+        if (config.anthropicBaseUrl !== undefined) {
+          if (config.anthropicBaseUrl) {
+            const trimmed = config.anthropicBaseUrl.trim()
+            next = { ...next, anthropicBaseUrl: trimmed || undefined }
+          } else {
+            const { anthropicBaseUrl: _removed, ...rest } = next
+            next = rest
+          }
+        }
+
+        if (config.customModel !== undefined) {
+          const trimmed = config.customModel?.trim() ?? ''
+          if (trimmed) {
+            next = { ...next, customModel: trimmed }
+          } else {
+            const { customModel: _removed, ...rest } = next
+            next = rest
+          }
+        }
+
+        return next
+      })
+
+      newConfig.apiProfiles = nextProfiles
+      newConfig.activeApiProfileId = activeProfileId
+
       // 4. Create workspace only if workspace info is provided
       let workspaceId: string | undefined
       if (config.workspace) {

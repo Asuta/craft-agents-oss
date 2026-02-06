@@ -43,13 +43,15 @@ function parseTestCase(content: string): TestCase {
   const expectedLines: string[] = []
 
   for (const line of lines) {
-    if (line === '---') {
+    const normalizedLine = line.replace(/\r$/, '')
+
+    if (normalizedLine === '---') {
       inMermaid = false
       continue
     }
 
     if (inMermaid) {
-      const trimmed = line.trim()
+      const trimmed = normalizedLine.trim()
 
       // Before mermaid code starts, parse padding directives and skip blanks
       if (!mermaidStarted) {
@@ -67,9 +69,9 @@ function parseTestCase(content: string): TestCase {
       }
 
       mermaidStarted = true
-      mermaidLines.push(line)
+      mermaidLines.push(normalizedLine)
     } else {
-      expectedLines.push(line)
+      expectedLines.push(normalizedLine)
     }
   }
 

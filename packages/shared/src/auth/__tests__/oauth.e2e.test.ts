@@ -29,13 +29,32 @@ function skipIfNoMetadata(
   return false;
 }
 
+async function discoverWithTimeout(url: string, logs: string[], timeoutMs: number) {
+  const discovery = discoverOAuthMetadata(url, (msg) => logs.push(msg)).catch((err) => {
+    logs.push(err instanceof Error ? err.message : String(err))
+    return null
+  })
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<null>((resolve) => {
+    timeoutId = setTimeout(() => {
+      logs.push('timeout')
+      resolve(null)
+    }, timeoutMs)
+  })
+
+  const result = await Promise.race([discovery, timeout])
+  if (timeoutId) clearTimeout(timeoutId)
+  return result
+}
+
 describe('E2E: OAuth Metadata Discovery', () => {
   describe('GitHub MCP (api.githubcopilot.com)', () => {
     const MCP_URL = 'https://api.githubcopilot.com/mcp/';
 
     it('discovers OAuth metadata', async () => {
       const logs: string[] = [];
-      const metadata = await discoverOAuthMetadata(MCP_URL, (msg) => logs.push(msg));
+      const metadata = await discoverWithTimeout(MCP_URL, logs, 2500);
 
       if (skipIfNoMetadata('GitHub MCP', metadata, logs)) {
         return;
@@ -52,7 +71,7 @@ describe('E2E: OAuth Metadata Discovery', () => {
 
     it('discovers OAuth metadata', async () => {
       const logs: string[] = [];
-      const metadata = await discoverOAuthMetadata(MCP_URL, (msg) => logs.push(msg));
+      const metadata = await discoverWithTimeout(MCP_URL, logs, 2500);
 
       if (skipIfNoMetadata('Linear MCP', metadata, logs)) {
         return;
@@ -69,7 +88,7 @@ describe('E2E: OAuth Metadata Discovery', () => {
 
     it('discovers OAuth metadata', async () => {
       const logs: string[] = [];
-      const metadata = await discoverOAuthMetadata(MCP_URL, (msg) => logs.push(msg));
+      const metadata = await discoverWithTimeout(MCP_URL, logs, 2500);
 
       if (skipIfNoMetadata('Ahrefs MCP', metadata, logs)) {
         return;
@@ -86,7 +105,7 @@ describe('E2E: OAuth Metadata Discovery', () => {
 
     it('discovers OAuth metadata via RFC 9728', async () => {
       const logs: string[] = [];
-      const metadata = await discoverOAuthMetadata(MCP_URL, (msg) => logs.push(msg));
+      const metadata = await discoverWithTimeout(MCP_URL, logs, 2500);
 
       if (skipIfNoMetadata('Craft MCP', metadata, logs)) {
         return;

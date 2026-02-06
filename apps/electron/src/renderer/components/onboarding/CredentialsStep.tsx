@@ -5,6 +5,7 @@
  * with StepFormLayout for the onboarding wizard context.
  */
 
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { ExternalLink } from "lucide-react"
 import type { ApiSetupMethod } from "./APISetupStep"
 import { StepFormLayout, BackButton, ContinueButton } from "./primitives"
@@ -15,6 +16,11 @@ import {
   OAuthConnect,
   type OAuthStatus,
 } from "../apisetup"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { RenameDialog } from "@/components/ui/rename-dialog"
+import { SettingsMenuSelect, type SettingsMenuSelectOption } from "@/components/settings"
+import type { ApiProfilesInfo } from "../../../shared/types"
 
 export type CredentialStatus = ApiKeyStatus | OAuthStatus
 
@@ -43,6 +49,66 @@ export function CredentialsStep({
   onCancelOAuth,
 }: CredentialsStepProps) {
   const isOAuth = apiSetupMethod === 'claude_oauth'
+
+  const [apiProfiles, setApiProfiles] = useState<ApiProfilesInfo | null>(null)
+  const [activeProfileId, setActiveProfileId] = useState<string>('')
+  const [isProfileLoading, setIsProfileLoading] = useState(false)
+  const [isCreateProfileOpen, setIsCreateProfileOpen] = useState(false)
+  const [newProfileName, setNewProfileName] = useState('')
+
+  const isDisabled = status === 'validating'
+
+  const profileOptions: SettingsMenuSelectOption[] = useMemo(() => {
+    return (apiProfiles?.profiles ?? []).map((p) => ({
+      value: p.id,
+      label: p.name,
+      description: p.authType === 'oauth_token' ? 'Claude OAuth' : 'API Key',
+    }))
+  }, [apiProfiles])
+
+  const reloadProfiles = useCallback(async () => {
+    if (!window.electronAPI?.getApiProfiles) return
+    const profiles = await window.electronAPI.getApiProfiles()
+    setApiProfiles(profiles)
+    setActiveProfileId(profiles.activeId ?? profiles.profiles[0]?.id ?? '')
+  }, [])
+
+  useEffect(() => {
+    if (!isOAuth) return
+    void reloadProfiles()
+  }, [isOAuth, reloadProfiles])
+
+  const handleSelectProfile = useCallback(async (profileId: string) => {
+    if (!window.electronAPI?.setActiveApiProfile) return
+    setIsProfileLoading(true)
+    try {
+      const ok = await window.electronAPI.setActiveApiProfile(profileId)
+      if (ok) {
+        setActiveProfileId(profileId)
+        await reloadProfiles()
+      }
+    } finally {
+      setIsProfileLoading(false)
+    }
+  }, [reloadProfiles])
+
+  const handleCreateProfile = useCallback(async () => {
+    if (!window.electronAPI?.createApiProfile) return
+    const name = newProfileName.trim()
+    setNewProfileName('')
+    setIsCreateProfileOpen(false)
+    if (!name) return
+    setIsProfileLoading(true)
+    try {
+      const created = await window.electronAPI.createApiProfile(name)
+      if (created) {
+        setActiveProfileId(created.id)
+        await reloadProfiles()
+      }
+    } finally {
+      setIsProfileLoading(false)
+    }
+  }, [newProfileName, reloadProfiles])
 
   // --- OAuth flow ---
   if (isOAuth) {
@@ -77,6 +143,8 @@ export function CredentialsStep({
       )
     }
 
+    const showProfileControls = (apiProfiles?.profiles?.length ?? 0) > 0
+
     return (
       <StepFormLayout
         title="Connect Claude Account"
@@ -96,6 +164,28 @@ export function CredentialsStep({
           </>
         }
       >
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>API Profile</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isDisabled || isProfileLoading || !window.electronAPI?.createApiProfile}
+              onClick={() => setIsCreateProfileOpen(true)}
+            >
+              New
+            </Button>
+          </div>
+          <SettingsMenuSelect
+            value={activeProfileId}
+            onValueChange={handleSelectProfile}
+            options={profileOptions}
+            placeholder={showProfileControls ? "Select a profile" : "Default"}
+            disabled={isDisabled || isProfileLoading || !showProfileControls}
+          />
+        </div>
+
         <OAuthConnect
           status={status as OAuthStatus}
           errorMessage={errorMessage}
@@ -103,6 +193,18 @@ export function CredentialsStep({
           onStartOAuth={onStartOAuth!}
           onSubmitAuthCode={onSubmitAuthCode}
           onCancelOAuth={onCancelOAuth}
+        />
+
+        <RenameDialog
+          open={isCreateProfileOpen}
+          onOpenChange={setIsCreateProfileOpen}
+          title="New API Profile"
+          description="Create a new API configuration profile."
+          placeholder="Profile name"
+          value={newProfileName}
+          onChange={setNewProfileName}
+          onSubmit={handleCreateProfile}
+          disabled={isDisabled || isProfileLoading}
         />
       </StepFormLayout>
     )
