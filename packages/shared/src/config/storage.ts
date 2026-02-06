@@ -1171,6 +1171,18 @@ export function setCustomModel(model: string | null): void {
 export function resolveModelId(defaultModelId: string): string {
   const customModel = getCustomModel();
   if (customModel) return customModel;
+
+  const baseUrl = getAnthropicBaseUrl();
+  if (baseUrl) {
+    try {
+      const u = new URL(baseUrl);
+      if (u.hostname.toLowerCase() === 'generativelanguage.googleapis.com' || u.pathname.split('/').includes('v1beta')) {
+        return 'models/gemini-2.0-flash';
+      }
+    } catch {
+    }
+  }
+
   return defaultModelId;
 }
 

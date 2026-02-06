@@ -801,9 +801,14 @@ export class SessionManager {
           process.env.ANTHROPIC_API_KEY = billing.apiKey
           sessionLog.info(`Using custom provider at ${customBaseUrl}`)
         } else {
-          // Set a placeholder key for providers like Ollama that don't validate keys
-          process.env.ANTHROPIC_API_KEY = 'not-needed'
-          sessionLog.warn('Custom base URL configured but no API key set. Using placeholder key (works for Ollama, will fail for OpenRouter).')
+          const isOllama = customBaseUrl.includes('localhost:11434') || customBaseUrl.includes('127.0.0.1:11434')
+          if (isOllama) {
+            process.env.ANTHROPIC_API_KEY = 'not-needed'
+            sessionLog.warn('Custom base URL configured but no API key set. Using placeholder key.')
+          } else {
+            delete process.env.ANTHROPIC_API_KEY
+            sessionLog.warn('Custom base URL configured but no API key set.')
+          }
         }
       } else if (billing.type === 'oauth_token' && billing.claudeOAuthToken) {
         // Priority 2: Claude Max subscription via OAuth token (direct Anthropic only)

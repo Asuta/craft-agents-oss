@@ -1275,12 +1275,75 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     const trimmedKey = apiKey?.trim()
     const trimmedUrl = baseUrl?.trim()
 
+    const isGemini = (() => {
+      if (!trimmedUrl) return false
+      try {
+        const u = new URL(trimmedUrl)
+        return u.hostname.toLowerCase() === 'generativelanguage.googleapis.com' || u.pathname.split('/').includes('v1beta')
+      } catch {
+        return trimmedUrl.includes('/v1beta')
+      }
+    })()
+
+    if (isGemini && !trimmedKey) {
+      return { success: false, error: 'API key is required for Google Gemini' }
+    }
+
     // Require API key unless a custom base URL is provided (e.g. Ollama needs no key)
     if (!trimmedKey && !trimmedUrl) {
       return { success: false, error: 'API key is required' }
     }
 
     try {
+      if (isGemini && trimmedUrl) {
+        const base = (() => {
+          const cleaned = trimmedUrl.replace(/\/+$/, '')
+          try {
+            const u = new URL(cleaned)
+            const pathname = u.pathname.replace(/\/+$/, '')
+            u.pathname = pathname.endsWith('/models') ? pathname.slice(0, -'/models'.length) : pathname
+            return u.toString().replace(/\/+$/, '')
+          } catch {
+            return cleaned.replace(/\/models$/, '')
+          }
+        })()
+        const userModel = modelName?.trim()
+        const model = userModel || 'models/gemini-2.0-flash'
+        const normalizedModel = model.startsWith('models/') ? model : `models/${model}`
+
+        const response = await fetch(`${base}/${normalizedModel}:generateContent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': trimmedKey },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
+            generationConfig: { maxOutputTokens: 16 },
+            tools: [{
+              functionDeclarations: [{
+                name: 'test_tool',
+                description: 'Test tool for validation',
+                parameters: { type: 'object', properties: {} },
+              }]
+            }],
+            toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
+          }),
+        })
+
+        if (!response.ok) {
+          const body = await response.text().catch(() => '')
+          const msg = (body || response.statusText).toLowerCase()
+          if (response.status === 401 || response.status === 403 || msg.includes('api key')) {
+            return { success: false, error: 'Invalid API key' }
+          }
+          if (msg.includes('model') && (msg.includes('not found') || msg.includes('invalid'))) {
+            const displayModel = userModel || 'models/gemini-2.0-flash'
+            return { success: false, error: `Model "${displayModel}" not found. Check the model name and try again.` }
+          }
+          return { success: false, error: body.slice(0, 300) || response.statusText }
+        }
+
+        return { success: true }
+      }
+
       // Unified test: send a minimal POST to /v1/messages with a tool definition.
       // This validates connection, auth, model existence, and tool support in one call.
       // Works identically for Anthropic, OpenRouter, Vercel AI Gateway, and Ollama (v0.14+).

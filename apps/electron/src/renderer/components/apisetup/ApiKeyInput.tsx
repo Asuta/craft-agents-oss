@@ -43,7 +43,7 @@ export interface ApiKeyInputProps {
   disabled?: boolean
 }
 
-type PresetKey = 'anthropic' | 'openrouter' | 'vercel' | 'ollama' | 'custom'
+type PresetKey = 'anthropic' | 'openrouter' | 'vercel' | 'ollama' | 'gemini' | 'custom'
 
 interface Preset {
   key: PresetKey
@@ -55,6 +55,7 @@ const PRESETS: Preset[] = [
   { key: 'anthropic', label: 'Anthropic', url: 'https://api.anthropic.com' },
   { key: 'openrouter', label: 'OpenRouter', url: 'https://openrouter.ai/api' },
   { key: 'vercel', label: 'Vercel AI Gateway', url: 'https://ai-gateway.vercel.sh' },
+  { key: 'gemini', label: 'Google Gemini', url: 'https://generativelanguage.googleapis.com/v1beta' },
   { key: 'ollama', label: 'Ollama', url: 'http://localhost:11434' },
   { key: 'custom', label: 'Custom', url: '' },
 ]
@@ -86,10 +87,12 @@ export function ApiKeyInput({
     } else {
       setBaseUrl(preset.url)
     }
-    // Pre-fill recommended model for Ollama; clear for all others
+    // Pre-fill recommended model for Ollama and Gemini; clear for all others
     // (Anthropic hides the field entirely, others default to Claude model IDs when empty)
     if (preset.key === 'ollama') {
       setCustomModel('qwen3-coder')
+    } else if (preset.key === 'gemini') {
+      setCustomModel('models/gemini-2.0-flash')
     } else {
       setCustomModel('')
     }
@@ -236,6 +239,13 @@ export function ApiKeyInput({
           {activePreset === 'ollama' && (
             <p className="text-xs text-foreground/30">
               Use any model pulled via <code className="text-foreground/40">ollama pull</code>. No API key required.
+            </p>
+          )}
+          {activePreset === 'gemini' && (
+            <p className="text-xs text-foreground/30">
+              Use Google AI Studio model IDs.
+              <br />
+              Format: <code className="text-foreground/40">models/gemini-*</code>
             </p>
           )}
           {(activePreset === 'custom' || !activePreset) && (

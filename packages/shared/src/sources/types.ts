@@ -298,7 +298,7 @@ export interface FolderSourceConfig {
   enabled: boolean;
 
   // Provider is a freeform label (e.g., "linear", "todoist", "my-custom-api")
-  provider: string;
+  provider?: string;
 
   // Connection type determines which config block is used
   type: SourceType;

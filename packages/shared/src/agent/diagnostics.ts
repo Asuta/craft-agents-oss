@@ -51,6 +51,8 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, defaultVal
  */
 async function checkCapturedApiError(): Promise<CheckResult> {
   const apiError = getLastApiError();
+  const baseUrl = process.env.ANTHROPIC_BASE_URL?.trim() || 'https://api.anthropic.com';
+  const label = getProviderLabel(baseUrl);
 
   if (!apiError) {
     return { ok: true, detail: '✓ API error: None captured' };
@@ -63,7 +65,7 @@ async function checkCapturedApiError(): Promise<CheckResult> {
       detail: `✗ API error: 402 ${apiError.message}`,
       failCode: 'billing_error',
       failTitle: 'Payment Required',
-      failMessage: apiError.message || 'Your Anthropic API account has a billing issue.',
+      failMessage: apiError.message || `Your ${label} account has a billing issue.`,
     };
   }
 
@@ -95,8 +97,8 @@ async function checkCapturedApiError(): Promise<CheckResult> {
       ok: false,
       detail: `✗ API error: ${apiError.status} ${apiError.message}`,
       failCode: 'service_unavailable',
-      failTitle: 'Anthropic Service Error',
-      failMessage: `The Anthropic API returned an error (${apiError.status}). This is usually temporary.`,
+      failTitle: `${label} Service Error`,
+      failMessage: `The ${label} returned an error (${apiError.status}). This is usually temporary.`,
     };
   }
 
@@ -110,9 +112,34 @@ async function checkCapturedApiError(): Promise<CheckResult> {
  * Used in diagnostics messages so errors reference the correct provider.
  */
 function getProviderLabel(baseUrl: string): string {
+  if (baseUrl.includes('generativelanguage.googleapis.com') || baseUrl.includes('/v1beta')) return 'Google Gemini';
   if (baseUrl.includes('openrouter')) return 'OpenRouter';
+  if (baseUrl.includes('ai-gateway.vercel.sh')) return 'Vercel AI Gateway';
   if (baseUrl.includes('anthropic')) return 'Anthropic';
+  if (baseUrl.includes('localhost:11434')) return 'Ollama';
   return 'API endpoint';
+}
+
+function isGeminiBaseUrl(baseUrl: string): boolean {
+  try {
+    const u = new URL(baseUrl);
+    if (u.hostname.toLowerCase() === 'generativelanguage.googleapis.com') return true;
+    return u.pathname.split('/').includes('v1beta');
+  } catch {
+    return baseUrl.includes('/v1beta');
+  }
+}
+
+function normalizeGeminiBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.replace(/\/+$/, '');
+  try {
+    const u = new URL(trimmed);
+    const pathname = u.pathname.replace(/\/+$/, '');
+    u.pathname = pathname.endsWith('/models') ? pathname.slice(0, -'/models'.length) : pathname;
+    return u.toString().replace(/\/+$/, '');
+  } catch {
+    return trimmed.replace(/\/models$/, '');
+  }
 }
 
 /**
@@ -124,6 +151,7 @@ async function checkApiAvailability(): Promise<CheckResult> {
   // Use the same base URL resolution as network-interceptor.ts
   const baseUrl = process.env.ANTHROPIC_BASE_URL?.trim() || 'https://api.anthropic.com';
   const label = getProviderLabel(baseUrl);
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
 
   try {
     const controller = new AbortController();
@@ -131,8 +159,14 @@ async function checkApiAvailability(): Promise<CheckResult> {
 
     try {
       // HEAD request doesn't require auth and checks if service is up
-      const response = await fetch(`${baseUrl}/v1/models`, {
-        method: 'HEAD',
+      const isGemini = isGeminiBaseUrl(baseUrl);
+      const base = isGemini ? normalizeGeminiBaseUrl(baseUrl) : baseUrl.replace(/\/+$/, '');
+      const probeUrl = isGemini ? `${base}/models` : `${base}/v1/models`;
+      const response = await fetch(probeUrl, {
+        method: isGemini ? 'GET' : 'HEAD',
+        ...(isGemini && apiKey
+          ? { headers: { 'x-goog-api-key': apiKey } }
+          : {}),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -195,7 +229,41 @@ async function checkWorkspaceToken(_workspaceId: string): Promise<CheckResult> {
  * Uses models.list() which is lightweight and doesn't incur AI costs.
  */
 async function validateApiKeyWithAnthropic(apiKey: string, baseUrl?: string | null): Promise<CheckResult> {
+  const label = baseUrl ? getProviderLabel(baseUrl) : 'Anthropic';
   try {
+    const isGemini = Boolean(baseUrl && isGeminiBaseUrl(baseUrl));
+    if (isGemini && baseUrl) {
+      const base = normalizeGeminiBaseUrl(baseUrl);
+      const response = await fetch(`${base}/models`, {
+        method: 'GET',
+        headers: { 'x-goog-api-key': apiKey },
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        const msg = body || response.statusText;
+        if (response.status === 401 || response.status === 403) {
+          return {
+            ok: false,
+            detail: '✗ API key: Invalid or expired',
+            failCode: 'invalid_credentials',
+            failTitle: 'Invalid API Key',
+            failMessage: `Your ${label} API key is invalid or has expired. Please update it in settings.`,
+          };
+        }
+        return {
+          ok: true,
+          detail: `✓ API key: Validation skipped (${msg.slice(0, 50)})`,
+        };
+      }
+
+      const json = await response.json().catch(() => null);
+      const modelCount = Array.isArray((json as any)?.models) ? (json as any).models.length : 0;
+      return {
+        ok: true,
+        detail: `✓ API key: Valid (${modelCount} models available)`,
+      };
+    }
+
     const client = new Anthropic({
       apiKey,
       ...(baseUrl ? { baseURL: baseUrl } : {})
@@ -216,7 +284,7 @@ async function validateApiKeyWithAnthropic(apiKey: string, baseUrl?: string | nu
         detail: '✗ API key: Invalid or expired',
         failCode: 'invalid_credentials',
         failTitle: 'Invalid API Key',
-        failMessage: 'Your Anthropic API key is invalid or has expired. Please update it in settings.',
+        failMessage: `Your ${label} API key is invalid or has expired. Please update it in settings.`,
       };
     }
 
@@ -227,7 +295,7 @@ async function validateApiKeyWithAnthropic(apiKey: string, baseUrl?: string | nu
         detail: '✗ API key: Insufficient permissions',
         failCode: 'invalid_credentials',
         failTitle: 'API Key Permission Error',
-        failMessage: 'Your API key does not have permission to access the API. Check your Anthropic dashboard.',
+        failMessage: `Your API key does not have permission to access the ${label} API. Check your provider dashboard.`,
       };
     }
 
@@ -244,6 +312,11 @@ async function checkApiKey(): Promise<CheckResult> {
   try {
     const apiKey = await getAnthropicApiKey();
     const baseUrl = getAnthropicBaseUrl();
+    const label = baseUrl ? getProviderLabel(baseUrl) : 'Anthropic';
+
+    if (baseUrl && baseUrl.includes('localhost:11434') && !apiKey) {
+      return { ok: true, detail: '✓ API key: Not required' };
+    }
 
     if (!apiKey) {
       return {
@@ -251,7 +324,7 @@ async function checkApiKey(): Promise<CheckResult> {
         detail: '✗ API key: Not found',
         failCode: 'invalid_credentials',
         failTitle: 'API Key Missing',
-        failMessage: 'Your Anthropic API key is missing. Please add it in settings.',
+        failMessage: `Your ${label} API key is missing. Please add it in settings.`,
       };
     }
 

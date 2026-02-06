@@ -7,7 +7,7 @@ describe('discoverOAuthMetadata', () => {
 
   beforeEach(() => {
     mockFetch = mock(() => Promise.resolve(new Response('Not Found', { status: 404 })));
-    globalThis.fetch = mockFetch;
+    globalThis.fetch = Object.assign(mockFetch, { preconnect: (..._args: any[]) => {} }) as unknown as typeof fetch;
   });
 
   afterEach(() => {

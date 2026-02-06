@@ -57,6 +57,7 @@ import {
 import type { FolderSourceConfig, LoadedSource } from '../sources/types.ts';
 import { getSourceCredentialManager } from '../sources/index.ts';
 import { inferGoogleServiceFromUrl, inferSlackServiceFromUrl, inferMicrosoftServiceFromUrl, isApiOAuthProvider, type GoogleService, type SlackService, type MicrosoftService } from '../sources/types.ts';
+import { isGoogleOAuthConfigured } from '../auth/google-oauth.ts';
 import { buildAuthorizationHeader } from '../sources/api-tools.ts';
 import { DOC_REFS } from '../docs/index.ts';
 import { renderMermaid } from '@craft-agent/mermaid';
@@ -185,12 +186,13 @@ export interface AuthResult {
  * @returns Effective mode to use
  */
 export function detectCredentialMode(
-  source: { api?: { headerNames?: string[] } } | null,
+  source: { api?: unknown } | null,
   requestedMode: CredentialInputMode,
   requestedHeaderNames?: string[]
 ): CredentialInputMode {
-  // Use provided headerNames or fall back to source config
-  const effectiveHeaderNames = requestedHeaderNames || source?.api?.headerNames;
+  const api = source?.api as { headerNames?: unknown } | undefined;
+  const sourceHeaderNames = Array.isArray(api?.headerNames) ? api.headerNames : undefined;
+  const effectiveHeaderNames = requestedHeaderNames || sourceHeaderNames;
 
   // If we have headerNames, always use multi-header mode
   if (effectiveHeaderNames && effectiveHeaderNames.length > 0) {
@@ -208,10 +210,12 @@ export function detectCredentialMode(
  * @returns Array of header names or undefined
  */
 export function getEffectiveHeaderNames(
-  source: { api?: { headerNames?: string[] } } | null,
+  source: { api?: unknown } | null,
   requestedHeaderNames?: string[]
 ): string[] | undefined {
-  return requestedHeaderNames || source?.api?.headerNames;
+  if (requestedHeaderNames) return requestedHeaderNames;
+  const api = source?.api as { headerNames?: unknown } | undefined;
+  return Array.isArray(api?.headerNames) ? api.headerNames : undefined;
 }
 
 /**

@@ -30,7 +30,7 @@ Sentry.init({
   beforeSend(event) {
     // Scrub request headers (authorization, cookies)
     if (event.request?.headers) {
-      const sensitiveHeaders = ['authorization', 'cookie', 'x-api-key']
+      const sensitiveHeaders = ['authorization', 'cookie', 'x-api-key', 'x-goog-api-key']
       for (const header of sensitiveHeaders) {
         if (event.request.headers[header]) {
           event.request.headers[header] = '[REDACTED]'
@@ -90,6 +90,7 @@ if (isDebugMode) {
   process.env.CRAFT_DEBUG = '1'
   enableDebug()
   setPerfEnabled(true)
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.CRAFT_REMOTE_DEBUGGING_PORT || '9222')
 }
 
 // Custom URL scheme for deeplinks (e.g., craftagents://auth-complete)
