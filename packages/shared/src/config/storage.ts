@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync } from 'fs';
 import { join, dirname } from 'path';
+import { randomUUID } from 'crypto';
 import { getCredentialManager } from '../credentials/index.ts';
 import { getOrCreateLatestSession, type SessionConfig } from '../sessions/index.ts';
 import {
@@ -31,11 +32,21 @@ export type {
 // Import for local use
 import type { Workspace, AuthType } from '@craft-agent/core/types';
 
+export interface ApiProfile {
+  id: string;
+  name: string;
+  authType: AuthType;
+  anthropicBaseUrl?: string;
+  customModel?: string;
+}
+
 // Config stored in JSON file (credentials stored in encrypted file, not here)
 export interface StoredConfig {
   authType?: AuthType;
   anthropicBaseUrl?: string;  // Custom Anthropic API base URL (for third-party compatible APIs)
   customModel?: string;  // Custom model ID override (for third-party APIs like OpenRouter, Ollama)
+  apiProfiles?: ApiProfile[];
+  activeApiProfileId?: string | null;
   workspaces: Workspace[];
   activeWorkspaceId: string | null;
   activeSessionId: string | null;  // Currently active session (primary scope)
@@ -143,6 +154,19 @@ export function loadStoredConfig(): StoredConfig | null {
  */
 export async function getAnthropicApiKey(): Promise<string | null> {
   const manager = getCredentialManager();
+  const profileId = getActiveApiProfileId();
+  if (profileId) {
+    const named = await manager.getApiKey(profileId);
+    if (named) return named;
+    const legacy = await manager.getApiKey();
+    if (legacy) {
+      await manager.setApiKey(legacy, profileId);
+      await manager.delete({ type: 'anthropic_api_key' });
+      return legacy;
+    }
+    return null;
+  }
+
   return manager.getApiKey();
 }
 
@@ -151,6 +175,19 @@ export async function getAnthropicApiKey(): Promise<string | null> {
  */
 export async function getClaudeOAuthToken(): Promise<string | null> {
   const manager = getCredentialManager();
+  const profileId = getActiveApiProfileId();
+  if (profileId) {
+    const named = await manager.getClaudeOAuth(profileId);
+    if (named) return named;
+    const legacy = await manager.getClaudeOAuth();
+    if (legacy) {
+      await manager.setClaudeOAuth(legacy, profileId);
+      await manager.delete({ type: 'claude_oauth' });
+      return legacy;
+    }
+    return null;
+  }
+
   return manager.getClaudeOAuth();
 }
 
@@ -177,7 +214,13 @@ export async function updateApiKey(newApiKey: string): Promise<boolean> {
 
   // Save API key to credential store
   const manager = getCredentialManager();
-  await manager.setApiKey(newApiKey);
+  const profileId = getActiveApiProfileId();
+  if (profileId) {
+    await manager.setApiKey(newApiKey, profileId);
+    await manager.delete({ type: 'anthropic_api_key' });
+  } else {
+    await manager.setApiKey(newApiKey);
+  }
 
   // Update auth type in config (but not the key itself)
   config.authType = 'api_key';
@@ -185,18 +228,129 @@ export async function updateApiKey(newApiKey: string): Promise<boolean> {
   return true;
 }
 
+function coerceApiProfiles(config: StoredConfig): { profiles: ApiProfile[]; activeId: string } {
+  const profiles = Array.isArray(config.apiProfiles) ? config.apiProfiles.filter(p => !!p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.authType === 'string') : [];
+
+  if (profiles.length === 0) {
+    const defaults = loadConfigDefaults();
+    const authType = config.authType ?? defaults.defaults.authType;
+    const created: ApiProfile = {
+      id: 'default',
+      name: 'Default',
+      authType,
+      ...(config.anthropicBaseUrl ? { anthropicBaseUrl: config.anthropicBaseUrl } : {}),
+      ...(config.customModel ? { customModel: config.customModel } : {}),
+    };
+    config.apiProfiles = [created];
+    config.activeApiProfileId = created.id;
+    saveConfig(config);
+    return { profiles: [created], activeId: created.id };
+  }
+
+  const activeId = (config.activeApiProfileId && profiles.some(p => p.id === config.activeApiProfileId))
+    ? (config.activeApiProfileId as string)
+    : (profiles[0]?.id ?? 'default');
+
+  if (config.activeApiProfileId !== activeId) {
+    config.activeApiProfileId = activeId;
+    saveConfig(config);
+  }
+
+  return { profiles, activeId };
+}
+
+export function getApiProfiles(): ApiProfile[] {
+  const config = loadStoredConfig();
+  if (!config) return [];
+  return coerceApiProfiles(config).profiles;
+}
+
+export function getActiveApiProfileId(): string | null {
+  const config = loadStoredConfig();
+  if (!config) return null;
+  return coerceApiProfiles(config).activeId;
+}
+
+export function getActiveApiProfile(): ApiProfile | null {
+  const config = loadStoredConfig();
+  if (!config) return null;
+  const { profiles, activeId } = coerceApiProfiles(config);
+  return profiles.find(p => p.id === activeId) ?? null;
+}
+
+export function setActiveApiProfile(profileId: string): boolean {
+  const config = loadStoredConfig();
+  if (!config) return false;
+  const { profiles } = coerceApiProfiles(config);
+  if (!profiles.some(p => p.id === profileId)) return false;
+  config.activeApiProfileId = profileId;
+  saveConfig(config);
+  return true;
+}
+
+export function createApiProfile(name: string, cloneFromActive = true): ApiProfile | null {
+  const config = loadStoredConfig();
+  if (!config) return null;
+  const { profiles, activeId } = coerceApiProfiles(config);
+  const base = cloneFromActive ? profiles.find(p => p.id === activeId) : null;
+  const id = randomUUID();
+  const profile: ApiProfile = {
+    id,
+    name: name.trim() || 'New Profile',
+    authType: base?.authType ?? getAuthType(),
+    ...(base?.anthropicBaseUrl ? { anthropicBaseUrl: base.anthropicBaseUrl } : {}),
+    ...(base?.customModel ? { customModel: base.customModel } : {}),
+  };
+  config.apiProfiles = [...profiles, profile];
+  config.activeApiProfileId = profile.id;
+  saveConfig(config);
+  return profile;
+}
+
+export function renameApiProfile(profileId: string, name: string): boolean {
+  const config = loadStoredConfig();
+  if (!config) return false;
+  const { profiles } = coerceApiProfiles(config);
+  const nextName = name.trim();
+  if (!nextName) return false;
+  if (!profiles.some(p => p.id === profileId)) return false;
+  const updated = profiles.map(p => (p.id === profileId ? { ...p, name: nextName } : p));
+  config.apiProfiles = updated;
+  saveConfig(config);
+  return true;
+}
+
+export function deleteApiProfile(profileId: string): boolean {
+  const config = loadStoredConfig();
+  if (!config) return false;
+  const { profiles, activeId } = coerceApiProfiles(config);
+  if (profiles.length <= 1) return false;
+  const remaining = profiles.filter(p => p.id !== profileId);
+  if (remaining.length === profiles.length) return false;
+  config.apiProfiles = remaining;
+  if (activeId === profileId) {
+    config.activeApiProfileId = remaining[0]?.id ?? null;
+  }
+  saveConfig(config);
+  return true;
+}
+
 export function getAuthType(): AuthType {
   const config = loadStoredConfig();
-  if (config?.authType !== undefined) {
-    return config.authType;
+  if (config) {
+    const profile = getActiveApiProfile();
+    if (profile?.authType) return profile.authType;
+    if (config.authType !== undefined) return config.authType;
   }
-  const defaults = loadConfigDefaults();
-  return defaults.defaults.authType;
+  return loadConfigDefaults().defaults.authType;
 }
 
 export function setAuthType(authType: AuthType): void {
   const config = loadStoredConfig();
   if (!config) return;
+  const { profiles, activeId } = coerceApiProfiles(config);
+  const updated = profiles.map(p => (p.id === activeId ? { ...p, authType } : p));
+  config.apiProfiles = updated;
   config.authType = authType;
   saveConfig(config);
 }
@@ -204,6 +358,18 @@ export function setAuthType(authType: AuthType): void {
 export function setAnthropicBaseUrl(baseUrl: string | null): void {
   const config = loadStoredConfig();
   if (!config) return;
+
+  const { profiles, activeId } = coerceApiProfiles(config);
+  const updated = profiles.map(p => {
+    if (p.id !== activeId) return p;
+    if (baseUrl) {
+      const trimmed = baseUrl.trim();
+      return { ...p, anthropicBaseUrl: trimmed || undefined };
+    }
+    const { anthropicBaseUrl: _removed, ...rest } = p;
+    return rest;
+  });
+  config.apiProfiles = updated;
 
   if (baseUrl) {
     const trimmed = baseUrl.trim();
@@ -216,6 +382,8 @@ export function setAnthropicBaseUrl(baseUrl: string | null): void {
 }
 
 export function getAnthropicBaseUrl(): string | null {
+  const profile = getActiveApiProfile();
+  if (profile?.anthropicBaseUrl) return profile.anthropicBaseUrl;
   const config = loadStoredConfig();
   return config?.anthropicBaseUrl ?? null;
 }
@@ -1141,6 +1309,8 @@ export function clearDismissedUpdateVersion(): void {
  * When set, this single model is used for ALL API calls (main, summarization, etc.)
  */
 export function getCustomModel(): string | null {
+  const profile = getActiveApiProfile();
+  if (profile?.customModel?.trim()) return profile.customModel.trim();
   const config = loadStoredConfig();
   return config?.customModel?.trim() || null;
 }
@@ -1152,6 +1322,17 @@ export function getCustomModel(): string | null {
 export function setCustomModel(model: string | null): void {
   const config = loadStoredConfig();
   if (!config) return;
+
+  const { profiles, activeId } = coerceApiProfiles(config);
+  const updated = profiles.map(p => {
+    if (p.id !== activeId) return p;
+    if (model?.trim()) {
+      return { ...p, customModel: model.trim() };
+    }
+    const { customModel: _removed, ...rest } = p;
+    return rest;
+  });
+  config.apiProfiles = updated;
 
   if (model?.trim()) {
     config.customModel = model.trim();

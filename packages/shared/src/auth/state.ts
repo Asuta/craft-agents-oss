@@ -12,7 +12,16 @@
  */
 
 import { getCredentialManager } from '../credentials/index.ts';
-import { loadStoredConfig, getActiveWorkspace, type AuthType, type Workspace } from '../config/storage.ts';
+import {
+  getActiveApiProfile,
+  getActiveApiProfileId,
+  getActiveWorkspace,
+  getAnthropicApiKey,
+  getAuthType,
+  loadStoredConfig,
+  type AuthType,
+  type Workspace,
+} from '../config/storage.ts';
 import { refreshClaudeToken, isTokenExpired } from './claude-token.ts';
 import { debug } from '../utils/debug.ts';
 
@@ -71,7 +80,7 @@ export interface SetupNeeds {
 
 // Mutex to prevent concurrent token refresh attempts
 // When a refresh is in progress, other callers wait for it to complete
-let refreshInProgress: Promise<TokenResult> | null = null;
+let refreshInProgressByProfile = new Map<string, Promise<TokenResult>>();
 
 /**
  * Perform the actual token refresh (internal, called only when holding mutex)
@@ -80,7 +89,8 @@ let refreshInProgress: Promise<TokenResult> | null = null;
 export async function performTokenRefresh(
   manager: ReturnType<typeof getCredentialManager>,
   refreshToken: string,
-  originalSource: 'native' | 'cli' | undefined
+  originalSource: 'native' | 'cli' | undefined,
+  profileId: string | null
 ): Promise<TokenResult> {
   try {
     const refreshed = await refreshClaudeToken(refreshToken);
@@ -97,7 +107,7 @@ export async function performTokenRefresh(
       refreshToken: refreshed.refreshToken,
       expiresAt: refreshed.expiresAt,
       source: 'native',
-    });
+    }, profileId ?? undefined);
 
     return { accessToken: refreshed.accessToken };
   } catch (error) {
@@ -134,7 +144,7 @@ export async function performTokenRefresh(
         accessToken: '',
         refreshToken: undefined,
         expiresAt: undefined,
-      });
+      }, profileId ?? undefined);
     }
 
     // Token refresh failed - return null token with optional migration info
@@ -165,8 +175,20 @@ export async function performTokenRefresh(
 export async function getValidClaudeOAuthToken(): Promise<TokenResult> {
   const manager = getCredentialManager();
 
+  const profileId = getActiveApiProfileId();
+  const mutexKey = profileId ?? 'global';
+
   // Try to get credentials from our store
-  const creds = await manager.getClaudeOAuthCredentials();
+  let creds = await manager.getClaudeOAuthCredentials(profileId ?? undefined);
+
+  if ((!creds || !creds.accessToken) && profileId) {
+    const legacy = await manager.getClaudeOAuthCredentials();
+    if (legacy?.accessToken) {
+      await manager.setClaudeOAuthCredentials(legacy, profileId);
+      await manager.delete({ type: 'claude_oauth' });
+      creds = legacy;
+    }
+  }
 
   if (!creds || !creds.accessToken) {
     return { accessToken: null };
@@ -180,15 +202,16 @@ export async function getValidClaudeOAuthToken(): Promise<TokenResult> {
     // Try to refresh if we have a refresh token
     if (creds.refreshToken) {
       // Check if a refresh is already in progress
-      if (refreshInProgress) {
+      const existingRefresh = refreshInProgressByProfile.get(mutexKey);
+      if (existingRefresh) {
         debug('[auth] Token refresh already in progress, waiting...');
         try {
-          await refreshInProgress;
+          await existingRefresh;
         } catch {
           // Ignore errors from the other refresh attempt
         }
         // Re-read credentials after waiting (they may have been updated)
-        const updatedCreds = await manager.getClaudeOAuthCredentials();
+        const updatedCreds = await manager.getClaudeOAuthCredentials(profileId ?? undefined);
         if (updatedCreds?.accessToken && !isTokenExpired(updatedCreds.expiresAt)) {
           const expiresAtDate = updatedCreds.expiresAt ? new Date(updatedCreds.expiresAt).toISOString() : 'never';
           debug(`[auth] Got refreshed token from concurrent refresh (expires: ${expiresAtDate})`);
@@ -201,14 +224,15 @@ export async function getValidClaudeOAuthToken(): Promise<TokenResult> {
 
       // Start the refresh and set the mutex
       debug('[auth] Starting token refresh (holding mutex)');
-      refreshInProgress = performTokenRefresh(manager, creds.refreshToken, creds.source);
+      const refreshPromise = performTokenRefresh(manager, creds.refreshToken, creds.source, profileId);
+      refreshInProgressByProfile.set(mutexKey, refreshPromise);
 
       try {
-        const result = await refreshInProgress;
+        const result = await refreshPromise;
         return result;
       } finally {
         // Release the mutex
-        refreshInProgress = null;
+        refreshInProgressByProfile.delete(mutexKey);
       }
     } else {
       debug('[auth] No refresh token available, cannot refresh expired token');
@@ -224,24 +248,25 @@ export async function getValidClaudeOAuthToken(): Promise<TokenResult> {
  */
 export async function getAuthState(): Promise<AuthState> {
   const config = loadStoredConfig();
-  const manager = getCredentialManager();
+  const activeProfile = getActiveApiProfile();
+  const billingType: AuthType | null = config ? getAuthType() : null;
 
-  const apiKey = await manager.getApiKey();
-  const tokenResult = await getValidClaudeOAuthToken();
+  const apiKey = await getAnthropicApiKey();
+  const tokenResult = billingType === 'oauth_token' ? await getValidClaudeOAuthToken() : { accessToken: null };
   const activeWorkspace = getActiveWorkspace();
 
   // Determine if billing credentials are satisfied based on auth type
   let hasCredentials = false;
-  if (config?.authType === 'api_key') {
+  if (billingType === 'api_key') {
     // Keyless providers (Ollama) are valid when a custom base URL is configured
-    hasCredentials = !!apiKey || !!config?.anthropicBaseUrl;
-  } else if (config?.authType === 'oauth_token') {
+    hasCredentials = !!apiKey || !!(activeProfile?.anthropicBaseUrl ?? config?.anthropicBaseUrl);
+  } else if (billingType === 'oauth_token') {
     hasCredentials = !!tokenResult.accessToken;
   }
 
   return {
     billing: {
-      type: config?.authType ?? null,
+      type: billingType,
       hasCredentials,
       apiKey,
       claudeOAuthToken: tokenResult.accessToken,
@@ -281,5 +306,5 @@ export function getSetupNeeds(state: AuthState): SetupNeeds {
  * This allows tests to start with a clean state
  */
 export function _resetRefreshMutex(): void {
-  refreshInProgress = null;
+  refreshInProgressByProfile = new Map();
 }

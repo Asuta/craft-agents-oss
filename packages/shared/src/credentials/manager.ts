@@ -171,36 +171,36 @@ export class CredentialManager {
   // ============================================================
 
   /** Get Anthropic API key */
-  async getApiKey(): Promise<string | null> {
-    const cred = await this.get({ type: 'anthropic_api_key' });
+  async getApiKey(name?: string): Promise<string | null> {
+    const cred = await this.get({ type: 'anthropic_api_key', ...(name ? { name } : {}) });
     return cred?.value || null;
   }
 
   /** Set Anthropic API key */
-  async setApiKey(key: string): Promise<void> {
-    await this.set({ type: 'anthropic_api_key' }, { value: key });
+  async setApiKey(key: string, name?: string): Promise<void> {
+    await this.set({ type: 'anthropic_api_key', ...(name ? { name } : {}) }, { value: key });
   }
 
   /** Get Claude OAuth token */
-  async getClaudeOAuth(): Promise<string | null> {
-    const cred = await this.get({ type: 'claude_oauth' });
+  async getClaudeOAuth(name?: string): Promise<string | null> {
+    const cred = await this.get({ type: 'claude_oauth', ...(name ? { name } : {}) });
     return cred?.value || null;
   }
 
   /** Set Claude OAuth token */
-  async setClaudeOAuth(token: string): Promise<void> {
-    await this.set({ type: 'claude_oauth' }, { value: token });
+  async setClaudeOAuth(token: string, name?: string): Promise<void> {
+    await this.set({ type: 'claude_oauth', ...(name ? { name } : {}) }, { value: token });
   }
 
   /** Get Claude OAuth credentials (with refresh token, expiry, and source) */
-  async getClaudeOAuthCredentials(): Promise<{
+  async getClaudeOAuthCredentials(name?: string): Promise<{
     accessToken: string;
     refreshToken?: string;
     expiresAt?: number;
     /** Where the token came from: 'native' (our OAuth), 'cli' (Claude CLI import), or undefined (unknown) */
     source?: 'native' | 'cli';
   } | null> {
-    const cred = await this.get({ type: 'claude_oauth' });
+    const cred = await this.get({ type: 'claude_oauth', ...(name ? { name } : {}) });
     if (!cred) return null;
 
     return {
@@ -218,8 +218,8 @@ export class CredentialManager {
     expiresAt?: number;
     /** Where the token came from: 'native' (our OAuth), 'cli' (Claude CLI import) */
     source?: 'native' | 'cli';
-  }): Promise<void> {
-    await this.set({ type: 'claude_oauth' }, {
+  }, name?: string): Promise<void> {
+    await this.set({ type: 'claude_oauth', ...(name ? { name } : {}) }, {
       value: credentials.accessToken,
       refreshToken: credentials.refreshToken,
       expiresAt: credentials.expiresAt,

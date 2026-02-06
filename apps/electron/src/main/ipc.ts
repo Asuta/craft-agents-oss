@@ -9,9 +9,9 @@ import { SessionManager } from './sessions'
 import { ipcLog, windowLog, searchLog } from './logger'
 import { WindowManager } from './window-manager'
 import { registerOnboardingHandlers } from './onboarding'
-import { IPC_CHANNELS, type FileAttachment, type StoredAttachment, type AuthType, type ApiSetupInfo, type SendMessageOptions } from '../shared/types'
+import { IPC_CHANNELS, type FileAttachment, type StoredAttachment, type AuthType, type ApiSetupInfo, type ApiProfilesInfo, type ApiProfileInfo, type SendMessageOptions } from '../shared/types'
 import { readFileAttachment, perf, validateImageForClaudeAPI, IMAGE_LIMITS } from '@craft-agent/shared/utils'
-import { getAuthType, setAuthType, getPreferencesPath, getCustomModel, setCustomModel, getModel, setModel, getSessionDraft, setSessionDraft, deleteSessionDraft, getAllSessionDrafts, getWorkspaceByNameOrId, addWorkspace, setActiveWorkspace, getAnthropicBaseUrl, setAnthropicBaseUrl, loadStoredConfig, saveConfig, type Workspace, SUMMARIZATION_MODEL } from '@craft-agent/shared/config'
+import { getAuthType, setAuthType, getPreferencesPath, getCustomModel, setCustomModel, getModel, setModel, getSessionDraft, setSessionDraft, deleteSessionDraft, getAllSessionDrafts, getWorkspaceByNameOrId, addWorkspace, setActiveWorkspace, getAnthropicBaseUrl, setAnthropicBaseUrl, getAnthropicApiKey, getApiProfiles, getActiveApiProfileId, setActiveApiProfile, createApiProfile, renameApiProfile, deleteApiProfile, loadStoredConfig, saveConfig, type Workspace, SUMMARIZATION_MODEL } from '@craft-agent/shared/config'
 import { getSessionAttachmentsPath, validateSessionId } from '@craft-agent/shared/sessions'
 import { loadWorkspaceSources, getSourcesBySlugs, type LoadedSource } from '@craft-agent/shared/sources'
 import { isValidThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
@@ -1167,6 +1167,56 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
   // Settings - API Setup
   // ============================================================
 
+  // Get API profiles and active profile ID
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_API_PROFILES, async (): Promise<ApiProfilesInfo> => {
+    const profiles = getApiProfiles().map((p): ApiProfileInfo => ({
+      id: p.id,
+      name: p.name,
+      authType: p.authType,
+      ...(p.anthropicBaseUrl ? { anthropicBaseUrl: p.anthropicBaseUrl } : {}),
+      ...(p.customModel ? { customModel: p.customModel } : {}),
+    }))
+
+    return {
+      profiles,
+      activeId: getActiveApiProfileId(),
+    }
+  })
+
+  // Create a new API profile (optionally cloning from active)
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_CREATE_API_PROFILE, async (_event, name: string, cloneFromActive?: boolean): Promise<ApiProfileInfo | null> => {
+    const created = createApiProfile(name, cloneFromActive ?? true)
+    if (!created) return null
+    return {
+      id: created.id,
+      name: created.name,
+      authType: created.authType,
+      ...(created.anthropicBaseUrl ? { anthropicBaseUrl: created.anthropicBaseUrl } : {}),
+      ...(created.customModel ? { customModel: created.customModel } : {}),
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_RENAME_API_PROFILE, async (_event, profileId: string, name: string): Promise<boolean> => {
+    return renameApiProfile(profileId, name)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_DELETE_API_PROFILE, async (_event, profileId: string): Promise<boolean> => {
+    return deleteApiProfile(profileId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_SET_ACTIVE_API_PROFILE, async (_event, profileId: string): Promise<boolean> => {
+    const ok = setActiveApiProfile(profileId)
+    if (ok) {
+      try {
+        await sessionManager.reinitializeAuth()
+        ipcLog.info('Reinitialized auth after API profile switch')
+      } catch (authError) {
+        ipcLog.error('Failed to reinitialize auth after API profile switch:', authError)
+      }
+    }
+    return ok
+  })
+
   // Get current API setup and credential status
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_API_SETUP, async (): Promise<ApiSetupInfo> => {
     const authType = getAuthType()
@@ -1178,13 +1228,28 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     let customModel: string | undefined
 
     if (authType === 'api_key') {
-      apiKey = await manager.getApiKey() ?? undefined
+      apiKey = await getAnthropicApiKey() ?? undefined
       anthropicBaseUrl = getAnthropicBaseUrl() ?? undefined
       customModel = getCustomModel() ?? undefined
       // Keyless providers (Ollama) are valid when a custom base URL is configured
       hasCredential = !!apiKey || !!anthropicBaseUrl
     } else if (authType === 'oauth_token') {
-      hasCredential = !!(await manager.getClaudeOAuth())
+      const activeProfileId = getActiveApiProfileId()
+      if (activeProfileId) {
+        const named = await manager.getClaudeOAuth(activeProfileId)
+        if (named) {
+          hasCredential = true
+        } else {
+          const legacy = await manager.getClaudeOAuth()
+          if (legacy) {
+            await manager.setClaudeOAuth(legacy, activeProfileId)
+            await manager.delete({ type: 'claude_oauth' })
+            hasCredential = true
+          }
+        }
+      } else {
+        hasCredential = !!(await manager.getClaudeOAuth())
+      }
     }
 
     return {
@@ -1200,15 +1265,7 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
   ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE_API_SETUP, async (_event, authType: AuthType, credential?: string, anthropicBaseUrl?: string | null, customModel?: string | null) => {
     const manager = getCredentialManager()
 
-    // Clear old credentials when switching auth types
-    const oldAuthType = getAuthType()
-    if (oldAuthType !== authType) {
-      if (oldAuthType === 'api_key') {
-        await manager.delete({ type: 'anthropic_api_key' })
-      } else if (oldAuthType === 'oauth_token') {
-        await manager.delete({ type: 'claude_oauth' })
-      }
-    }
+    const activeProfileId = getActiveApiProfileId() || undefined
 
     // Set new auth type
     setAuthType(authType)
@@ -1241,19 +1298,29 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     // Store or clear credential
     if (credential) {
       if (authType === 'api_key') {
-        await manager.setApiKey(credential)
+        if (activeProfileId) {
+          await manager.setApiKey(credential, activeProfileId)
+          await manager.delete({ type: 'anthropic_api_key' })
+        } else {
+          await manager.setApiKey(credential)
+        }
       } else if (authType === 'oauth_token') {
         // Save the access token (refresh token and expiry are managed by the OAuth flow)
-        await manager.setClaudeOAuth(credential)
+        if (activeProfileId) {
+          await manager.setClaudeOAuth(credential, activeProfileId)
+          await manager.delete({ type: 'claude_oauth' })
+        } else {
+          await manager.setClaudeOAuth(credential)
+        }
         ipcLog.info('Saved Claude OAuth access token')
       }
     } else if (credential === '') {
       // Empty string means user explicitly cleared the credential
       if (authType === 'api_key') {
-        await manager.delete({ type: 'anthropic_api_key' })
+        await manager.delete({ type: 'anthropic_api_key', ...(activeProfileId ? { name: activeProfileId } : {}) })
         ipcLog.info('API key cleared')
       } else if (authType === 'oauth_token') {
-        await manager.delete({ type: 'claude_oauth' })
+        await manager.delete({ type: 'claude_oauth', ...(activeProfileId ? { name: activeProfileId } : {}) })
         ipcLog.info('Claude OAuth cleared')
       }
     }

@@ -1,4 +1,11 @@
-import type { FileAttachment, LoadedSource, PermissionMode } from '../../shared/types'
+import type {
+  ApiProfilesInfo,
+  ApiProfileInfo,
+  ApiSetupInfo,
+  FileAttachment,
+  LoadedSource,
+  PermissionMode,
+} from '../../shared/types'
 
 // ============================================================================
 // Mock electronAPI
@@ -6,6 +13,56 @@ import type { FileAttachment, LoadedSource, PermissionMode } from '../../shared/
 
 export const mockElectronAPI = {
   isDebugMode: async () => true,
+
+  getApiProfiles: async (): Promise<ApiProfilesInfo> => {
+    return {
+      profiles: mockApiProfiles,
+      activeId: mockActiveApiProfileId,
+    }
+  },
+
+  setActiveApiProfile: async (id: string): Promise<boolean> => {
+    if (!mockApiProfiles.some((p) => p.id === id)) return false
+    mockActiveApiProfileId = id
+    return true
+  },
+
+  createApiProfile: async (name: string, cloneFromActive = true): Promise<ApiProfileInfo> => {
+    const id = `profile-${Date.now()}`
+    const active = mockApiProfiles.find((p) => p.id === mockActiveApiProfileId) ?? mockApiProfiles[0]
+    const authType = cloneFromActive ? active?.authType ?? 'api_key' : 'api_key'
+    const profile: ApiProfileInfo = {
+      id,
+      name,
+      authType,
+      ...(cloneFromActive && active?.anthropicBaseUrl ? { anthropicBaseUrl: active.anthropicBaseUrl } : {}),
+      ...(cloneFromActive && active?.customModel ? { customModel: active.customModel } : {}),
+    }
+    mockApiProfiles = [...mockApiProfiles, profile]
+    if (cloneFromActive && active) {
+      const activeSetup = mockSetupByProfile[active.id]
+      if (activeSetup) {
+        mockSetupByProfile[id] = { ...activeSetup }
+      }
+    }
+    mockActiveApiProfileId = id
+    return profile
+  },
+
+  renameApiProfile: async (id: string, name: string): Promise<boolean> => {
+    const next = mockApiProfiles.map((p) => (p.id === id ? { ...p, name } : p))
+    if (next.every((p) => p.id !== id)) return false
+    mockApiProfiles = next
+    return true
+  },
+
+  deleteApiProfile: async (id: string): Promise<boolean> => {
+    if (id === mockActiveApiProfileId) return false
+    const beforeLen = mockApiProfiles.length
+    mockApiProfiles = mockApiProfiles.filter((p) => p.id !== id)
+    delete mockSetupByProfile[id]
+    return mockApiProfiles.length !== beforeLen
+  },
 
   openFileDialog: async () => {
     console.log('[Playground] openFileDialog called')
@@ -49,6 +106,18 @@ export const mockElectronAPI = {
   // FreeFormInput required mocks
   getAutoCapitalisation: async () => false,
 
+  getApiSetup: async (): Promise<ApiSetupInfo> => {
+    const setup = mockSetupByProfile[mockActiveApiProfileId] ?? {
+      authType: 'api_key',
+      hasCredential: false,
+    }
+    return setup
+  },
+
+  testApiConnection: async () => {
+    return { success: true }
+  },
+
   getPendingPlanExecution: async (sessionId: string) => {
     console.log('[Playground] getPendingPlanExecution called:', sessionId)
     return null
@@ -56,6 +125,28 @@ export const mockElectronAPI = {
 
   getSendMessageKey: async () => 'enter',
   getSpellCheck: async () => true,
+}
+
+let mockApiProfiles: ApiProfileInfo[] = [
+  { id: 'default', name: 'Default', authType: 'api_key' },
+  { id: 'openrouter', name: 'OpenRouter', authType: 'api_key', anthropicBaseUrl: 'https://openrouter.ai/api' },
+]
+
+let mockActiveApiProfileId: string = 'default'
+
+const mockSetupByProfile: Record<string, ApiSetupInfo> = {
+  default: {
+    authType: 'api_key',
+    hasCredential: true,
+    apiKey: 'sk-mock-123',
+  },
+  openrouter: {
+    authType: 'api_key',
+    hasCredential: true,
+    apiKey: 'sk-mock-openrouter-123',
+    anthropicBaseUrl: 'https://openrouter.ai/api',
+    customModel: 'openai/gpt-4o-mini',
+  },
 }
 
 /**

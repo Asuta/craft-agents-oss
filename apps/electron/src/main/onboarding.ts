@@ -100,12 +100,19 @@ export function registerOnboardingHandlers(sessionManager: SessionManager): void
     try {
       const manager = getCredentialManager()
 
+      mainLog.info('[Onboarding:Main] Loading existing config...')
+      const existingConfig = loadStoredConfig()
+      mainLog.info('[Onboarding:Main] Existing config:', existingConfig ? 'found' : 'not found')
+
+      const activeApiProfileId = existingConfig?.activeApiProfileId ?? 'default'
+
       // 1. Save billing credential if provided (only when authType is specified)
       if (config.credential && config.authType) {
         mainLog.info('[Onboarding:Main] Saving credential for authType:', config.authType)
         if (config.authType === 'api_key') {
           mainLog.info('[Onboarding:Main] Calling manager.setApiKey...')
-          await manager.setApiKey(config.credential)
+          await manager.setApiKey(config.credential, activeApiProfileId)
+          await manager.delete({ type: 'anthropic_api_key' })
           mainLog.info('[Onboarding:Main] API key saved successfully')
         } else if (config.authType === 'oauth_token') {
           // NOTE: For oauth_token, credentials are saved via ONBOARDING_EXCHANGE_CLAUDE_CODE
@@ -122,10 +129,6 @@ export function registerOnboardingHandlers(sessionManager: SessionManager): void
       }
 
       // 2. Load or create config
-      mainLog.info('[Onboarding:Main] Loading existing config...')
-      const existingConfig = loadStoredConfig()
-      mainLog.info('[Onboarding:Main] Existing config:', existingConfig ? 'found' : 'not found')
-
       const newConfig: StoredConfig = existingConfig || {
         authType: config.authType || 'api_key',
         workspaces: [],
@@ -281,12 +284,15 @@ export function registerOnboardingHandlers(sessionManager: SessionManager): void
 
       // Save credentials with refresh token support and source marker
       const manager = getCredentialManagerFn()
+      const existingConfig = loadStoredConfig()
+      const activeApiProfileId = existingConfig?.activeApiProfileId ?? 'default'
       await manager.setClaudeOAuthCredentials({
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         expiresAt: tokens.expiresAt,
         source: 'native', // Mark as obtained from our native OAuth flow
-      })
+      }, activeApiProfileId)
+      await manager.delete({ type: 'claude_oauth' })
 
       const expiresAtDate = tokens.expiresAt ? new Date(tokens.expiresAt).toISOString() : 'never'
       mainLog.info(`[Onboarding] Claude OAuth successful (expires: ${expiresAtDate})`)

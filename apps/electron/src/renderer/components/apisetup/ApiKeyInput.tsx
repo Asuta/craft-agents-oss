@@ -10,9 +10,11 @@
  * Used in: Onboarding CredentialsStep, Settings API dialog
  */
 
-import { useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { RenameDialog } from "@/components/ui/rename-dialog"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -21,6 +23,8 @@ import {
 } from "@/components/ui/styled-dropdown"
 import { cn } from "@/lib/utils"
 import { Check, ChevronDown, Eye, EyeOff } from "lucide-react"
+import { SettingsMenuSelect, type SettingsMenuSelectOption } from "@/components/settings"
+import type { ApiProfilesInfo, ApiSetupInfo } from "../../../shared/types"
 
 export type ApiKeyStatus = 'idle' | 'validating' | 'success' | 'error'
 
@@ -72,6 +76,12 @@ export function ApiKeyInput({
   formId = "api-key-form",
   disabled,
 }: ApiKeyInputProps) {
+  const [apiProfiles, setApiProfiles] = useState<ApiProfilesInfo | null>(null)
+  const [activeProfileId, setActiveProfileId] = useState<string>('')
+  const [isProfileLoading, setIsProfileLoading] = useState(false)
+  const [isCreateProfileOpen, setIsCreateProfileOpen] = useState(false)
+  const [newProfileName, setNewProfileName] = useState('')
+
   const [apiKey, setApiKey] = useState('')
   const [showValue, setShowValue] = useState(false)
   const [baseUrl, setBaseUrl] = useState(PRESETS[0].url)
@@ -79,6 +89,76 @@ export function ApiKeyInput({
   const [customModel, setCustomModel] = useState('')
 
   const isDisabled = disabled || status === 'validating'
+
+  const profileOptions: SettingsMenuSelectOption[] = useMemo(() => {
+    return (apiProfiles?.profiles ?? []).map((p) => ({
+      value: p.id,
+      label: p.name,
+      description: p.authType === 'oauth_token' ? 'Claude OAuth' : 'API Key',
+    }))
+  }, [apiProfiles])
+
+  const applySetupToForm = useCallback((setup: ApiSetupInfo) => {
+    const nextBaseUrl = setup.anthropicBaseUrl ?? PRESETS[0].url
+    setBaseUrl(nextBaseUrl)
+    setActivePreset(getPresetForUrl(nextBaseUrl))
+    setCustomModel(setup.customModel ?? '')
+    setApiKey(setup.apiKey ?? '')
+  }, [])
+
+  const reloadFromBackend = useCallback(async () => {
+    if (!window.electronAPI?.getApiProfiles || !window.electronAPI?.getApiSetup) return
+
+    const [profiles, setup] = await Promise.all([
+      window.electronAPI.getApiProfiles(),
+      window.electronAPI.getApiSetup(),
+    ])
+
+    setApiProfiles(profiles)
+    const nextActiveId = profiles.activeId ?? profiles.profiles[0]?.id ?? ''
+    setActiveProfileId(nextActiveId)
+    applySetupToForm(setup)
+  }, [applySetupToForm])
+
+  useEffect(() => {
+    const run = async () => {
+      if (!window.electronAPI?.getApiProfiles || !window.electronAPI?.getApiSetup) return
+      setIsProfileLoading(true)
+      try {
+        await reloadFromBackend()
+      } finally {
+        setIsProfileLoading(false)
+      }
+    }
+    void run()
+  }, [reloadFromBackend])
+
+  const handleProfileChange = useCallback(async (profileId: string) => {
+    if (!window.electronAPI?.setActiveApiProfile) return
+    setIsProfileLoading(true)
+    try {
+      await window.electronAPI.setActiveApiProfile(profileId)
+      await reloadFromBackend()
+    } finally {
+      setIsProfileLoading(false)
+    }
+  }, [reloadFromBackend])
+
+  const handleCreateProfile = useCallback(async () => {
+    if (!window.electronAPI?.createApiProfile) return
+    const name = newProfileName.trim()
+    if (!name) return
+
+    setIsProfileLoading(true)
+    try {
+      await window.electronAPI.createApiProfile(name, true)
+      setIsCreateProfileOpen(false)
+      setNewProfileName('')
+      await reloadFromBackend()
+    } finally {
+      setIsProfileLoading(false)
+    }
+  }, [newProfileName, reloadFromBackend])
 
   const handlePresetSelect = (preset: Preset) => {
     setActivePreset(preset.key)
@@ -118,6 +198,33 @@ export function ApiKeyInput({
 
   return (
     <form id={formId} onSubmit={handleSubmit} className="space-y-6">
+      {!!profileOptions.length && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Profile</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsCreateProfileOpen(true)}
+              disabled={isDisabled || isProfileLoading}
+            >
+              New
+            </Button>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <SettingsMenuSelect
+              value={activeProfileId}
+              onValueChange={handleProfileChange}
+              options={profileOptions}
+              disabled={isDisabled || isProfileLoading}
+              menuWidth={320}
+              className="w-full justify-between"
+            />
+          </div>
+        </div>
+      )}
+
       {/* API Key */}
       <div className="space-y-2">
         <Label htmlFor="api-key">API Key</Label>
@@ -260,6 +367,16 @@ export function ApiKeyInput({
       {status === 'error' && errorMessage && (
         <p className="text-sm text-destructive">{errorMessage}</p>
       )}
+
+      <RenameDialog
+        open={isCreateProfileOpen}
+        onOpenChange={setIsCreateProfileOpen}
+        title="New API Profile"
+        value={newProfileName}
+        onValueChange={setNewProfileName}
+        onSubmit={handleCreateProfile}
+        placeholder="Profile name"
+      />
     </form>
   )
 }

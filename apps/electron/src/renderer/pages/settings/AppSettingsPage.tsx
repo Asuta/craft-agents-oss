@@ -15,13 +15,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
+import { RenameDialog } from '@/components/ui/rename-dialog'
 import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { routes } from '@/lib/navigate'
 import { X } from 'lucide-react'
 import { Spinner, FullscreenOverlayBase } from '@craft-agent/ui'
 import { useSetAtom } from 'jotai'
 import { fullscreenOverlayOpenAtom } from '@/atoms/overlay'
-import type { AuthType } from '../../../shared/types'
+import type { ApiProfilesInfo, AuthType } from '../../../shared/types'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 
 import {
@@ -29,6 +30,7 @@ import {
   SettingsCard,
   SettingsRow,
   SettingsToggle,
+  SettingsMenuSelect,
 } from '@/components/settings'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
 import { useOnboarding } from '@/hooks/useOnboarding'
@@ -50,6 +52,10 @@ export default function AppSettingsPage() {
   // API Connection state (read-only display — editing is done via OnboardingWizard overlay)
   const [authType, setAuthType] = useState<AuthType>('api_key')
   const [hasCredential, setHasCredential] = useState(false)
+  const [apiProfiles, setApiProfiles] = useState<ApiProfilesInfo | null>(null)
+  const [isSwitchingProfile, setIsSwitchingProfile] = useState(false)
+  const [isCreateProfileOpen, setIsCreateProfileOpen] = useState(false)
+  const [newProfileName, setNewProfileName] = useState('')
   const [showApiSetup, setShowApiSetup] = useState(false)
   const setFullscreenOverlayOpen = useSetAtom(fullscreenOverlayOpenAtom)
 
@@ -73,13 +79,21 @@ export default function AppSettingsPage() {
   const loadConnectionInfo = useCallback(async () => {
     if (!window.electronAPI) return
     try {
-      const [billing, notificationsOn] = await Promise.all([
+      const profilesPromise = window.electronAPI.getApiProfiles
+        ? window.electronAPI.getApiProfiles()
+        : Promise.resolve(null)
+
+      const [billing, notificationsOn, profiles] = await Promise.all([
         window.electronAPI.getApiSetup(),
         window.electronAPI.getNotificationsEnabled(),
+        profilesPromise,
       ])
       setAuthType(billing.authType)
       setHasCredential(billing.hasCredential)
       setNotificationsEnabled(notificationsOn)
+      if (profiles) {
+        setApiProfiles(profiles)
+      }
     } catch (error) {
       console.error('Failed to load settings:', error)
     }
@@ -87,7 +101,7 @@ export default function AppSettingsPage() {
 
   useEffect(() => {
     loadConnectionInfo()
-  }, [])
+  }, [loadConnectionInfo])
 
   // Helpers to open/close the fullscreen API setup overlay
   const openApiSetup = useCallback(() => {
@@ -128,6 +142,35 @@ export default function AppSettingsPage() {
     await window.electronAPI.setNotificationsEnabled(enabled)
   }, [])
 
+  const handleSwitchProfile = useCallback(async (profileId: string) => {
+    if (!window.electronAPI?.setActiveApiProfile) return
+    setIsSwitchingProfile(true)
+    try {
+      await window.electronAPI.setActiveApiProfile(profileId)
+      refreshCustomModel()
+      await loadConnectionInfo()
+    } finally {
+      setIsSwitchingProfile(false)
+    }
+  }, [loadConnectionInfo, refreshCustomModel])
+
+  const handleCreateProfile = useCallback(async () => {
+    if (!window.electronAPI?.createApiProfile) return
+    const name = newProfileName.trim()
+    if (!name) return
+
+    setIsSwitchingProfile(true)
+    try {
+      await window.electronAPI.createApiProfile(name, true)
+      setIsCreateProfileOpen(false)
+      setNewProfileName('')
+      refreshCustomModel()
+      await loadConnectionInfo()
+    } finally {
+      setIsSwitchingProfile(false)
+    }
+  }, [loadConnectionInfo, newProfileName, refreshCustomModel])
+
   return (
     <div className="h-full flex flex-col">
       <PanelHeader title="App Settings" actions={<HeaderMenu route={routes.view.settings('app')} helpFeature="app-settings" />} />
@@ -150,6 +193,34 @@ export default function AppSettingsPage() {
             {/* API Connection */}
             <SettingsSection title="API Connection" description="How your AI agents connect to language models.">
               <SettingsCard>
+                {!!apiProfiles?.profiles?.length && apiProfiles.activeId && (
+                  <SettingsRow
+                    label="Profile"
+                    description="Switch between saved API configurations"
+                  >
+                    <div className="flex items-center gap-2">
+                      <SettingsMenuSelect
+                        value={apiProfiles.activeId}
+                        onValueChange={handleSwitchProfile}
+                        options={apiProfiles.profiles.map((p) => ({
+                          value: p.id,
+                          label: p.name,
+                          description: p.authType === 'oauth_token' ? 'Claude OAuth' : 'API Key',
+                        }))}
+                        disabled={isSwitchingProfile}
+                        menuWidth={320}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsCreateProfileOpen(true)}
+                        disabled={isSwitchingProfile}
+                      >
+                        New
+                      </Button>
+                    </div>
+                  </SettingsRow>
+                )}
                 <SettingsRow
                   label="Connection type"
                   description={
@@ -170,6 +241,16 @@ export default function AppSettingsPage() {
                 </SettingsRow>
               </SettingsCard>
             </SettingsSection>
+
+            <RenameDialog
+              open={isCreateProfileOpen}
+              onOpenChange={setIsCreateProfileOpen}
+              title="New API Profile"
+              value={newProfileName}
+              onValueChange={setNewProfileName}
+              onSubmit={handleCreateProfile}
+              placeholder="Profile name"
+            />
 
             {/* API Setup Fullscreen Overlay — reuses the OnboardingWizard starting at the api-setup step */}
             <FullscreenOverlayBase

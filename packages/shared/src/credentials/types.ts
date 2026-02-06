@@ -120,6 +120,14 @@ export function credentialIdToAccount(id: CredentialId): string {
     return parts.join(CREDENTIAL_DELIMITER);
   }
 
+  // Global credentials:
+  // - Default: {type}::global
+  // - Named:   {type}::{name}
+  if (id.name) {
+    parts.push(id.name);
+    return parts.join(CREDENTIAL_DELIMITER);
+  }
+
   parts.push('global');
   return parts.join(CREDENTIAL_DELIMITER);
 }
@@ -150,6 +158,11 @@ export function accountToCredentialId(account: string): CredentialId | null {
 
   if (parts.length === 2 && parts[1] === 'global') {
     return { type };
+  }
+
+  // Named global credential: {type}::{name}
+  if (parts.length === 2 && parts[1]) {
+    return { type, name: parts[1] };
   }
 
   // Unknown format

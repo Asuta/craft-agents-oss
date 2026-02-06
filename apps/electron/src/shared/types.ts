@@ -620,6 +620,13 @@ export const IPC_CHANNELS = {
   SETTINGS_UPDATE_API_SETUP: 'settings:updateApiSetup',
   SETTINGS_TEST_API_CONNECTION: 'settings:testApiConnection',
 
+  // Settings - API Profiles
+  SETTINGS_GET_API_PROFILES: 'settings:getApiProfiles',
+  SETTINGS_CREATE_API_PROFILE: 'settings:createApiProfile',
+  SETTINGS_RENAME_API_PROFILE: 'settings:renameApiProfile',
+  SETTINGS_DELETE_API_PROFILE: 'settings:deleteApiProfile',
+  SETTINGS_SET_ACTIVE_API_PROFILE: 'settings:setActiveApiProfile',
+
   // Settings - Model
   SETTINGS_GET_MODEL: 'settings:getModel',
   SETTINGS_SET_MODEL: 'settings:setModel',
@@ -892,6 +899,13 @@ export interface ElectronAPI {
   updateApiSetup(authType: AuthType, credential?: string, anthropicBaseUrl?: string | null, customModel?: string | null): Promise<void>
   testApiConnection(apiKey: string, baseUrl?: string, modelName?: string): Promise<{ success: boolean; error?: string; modelCount?: number }>
 
+  // Settings - API Profiles
+  getApiProfiles(): Promise<ApiProfilesInfo>
+  createApiProfile(name: string, cloneFromActive?: boolean): Promise<ApiProfileInfo | null>
+  renameApiProfile(profileId: string, name: string): Promise<boolean>
+  deleteApiProfile(profileId: string): Promise<boolean>
+  setActiveApiProfile(profileId: string): Promise<boolean>
+
   // Settings - Model (global default)
   getModel(): Promise<string | null>
   setModel(model: string): Promise<void>
@@ -1068,6 +1082,19 @@ export interface ApiSetupInfo {
   apiKey?: string  // The stored API key (only returned for api_key auth type)
   anthropicBaseUrl?: string  // Custom Anthropic API base URL (for third-party compatible APIs)
   customModel?: string  // Custom model ID override (for third-party APIs)
+}
+
+export interface ApiProfileInfo {
+  id: string
+  name: string
+  authType: AuthType
+  anthropicBaseUrl?: string
+  customModel?: string
+}
+
+export interface ApiProfilesInfo {
+  profiles: ApiProfileInfo[]
+  activeId: string | null
 }
 
 /**

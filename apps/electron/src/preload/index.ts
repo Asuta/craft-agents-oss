@@ -183,6 +183,17 @@ const api: ElectronAPI = {
   testApiConnection: (apiKey: string, baseUrl?: string, modelName?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_API_CONNECTION, apiKey, baseUrl, modelName),
 
+  // Settings - API Profiles
+  getApiProfiles: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_API_PROFILES),
+  createApiProfile: (name: string, cloneFromActive?: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_CREATE_API_PROFILE, name, cloneFromActive),
+  renameApiProfile: (profileId: string, name: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_RENAME_API_PROFILE, profileId, name),
+  deleteApiProfile: (profileId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_DELETE_API_PROFILE, profileId),
+  setActiveApiProfile: (profileId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET_ACTIVE_API_PROFILE, profileId),
+
   // Settings - Model (global default)
   getModel: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_MODEL),
   setModel: (model: string) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET_MODEL, model),
