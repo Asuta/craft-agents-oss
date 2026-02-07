@@ -897,7 +897,7 @@ export interface ElectronAPI {
   // Settings - API Setup
   getApiSetup(): Promise<ApiSetupInfo>
   updateApiSetup(authType: AuthType, credential?: string, anthropicBaseUrl?: string | null, customModel?: string | null): Promise<void>
-  testApiConnection(apiKey: string, baseUrl?: string, modelName?: string): Promise<{ success: boolean; error?: string; modelCount?: number }>
+  testApiConnection(apiKey: string, baseUrl?: string, modelName?: string, providerMode?: 'auto' | 'openai'): Promise<{ success: boolean; error?: string; modelCount?: number }>
 
   // Settings - API Profiles
   getApiProfiles(): Promise<ApiProfilesInfo>

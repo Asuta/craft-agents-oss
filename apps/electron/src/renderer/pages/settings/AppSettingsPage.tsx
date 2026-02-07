@@ -56,6 +56,8 @@ export default function AppSettingsPage() {
   const [isSwitchingProfile, setIsSwitchingProfile] = useState(false)
   const [isCreateProfileOpen, setIsCreateProfileOpen] = useState(false)
   const [newProfileName, setNewProfileName] = useState('')
+  const [isRenameProfileOpen, setIsRenameProfileOpen] = useState(false)
+  const [renameProfileName, setRenameProfileName] = useState('')
   const [showApiSetup, setShowApiSetup] = useState(false)
   const setFullscreenOverlayOpen = useSetAtom(fullscreenOverlayOpenAtom)
 
@@ -171,6 +173,46 @@ export default function AppSettingsPage() {
     }
   }, [loadConnectionInfo, newProfileName, refreshCustomModel])
 
+  const activeProfile = apiProfiles?.profiles.find((p) => p.id === apiProfiles.activeId) ?? null
+
+  const handleOpenRenameProfile = useCallback(() => {
+    if (!activeProfile) return
+    setRenameProfileName(activeProfile.name)
+    setIsRenameProfileOpen(true)
+  }, [activeProfile])
+
+  const handleRenameProfile = useCallback(async () => {
+    if (!window.electronAPI?.renameApiProfile || !activeProfile) return
+    const nextName = renameProfileName.trim()
+    if (!nextName) return
+
+    setIsSwitchingProfile(true)
+    try {
+      await window.electronAPI.renameApiProfile(activeProfile.id, nextName)
+      setIsRenameProfileOpen(false)
+      await loadConnectionInfo()
+    } finally {
+      setIsSwitchingProfile(false)
+    }
+  }, [activeProfile, loadConnectionInfo, renameProfileName])
+
+  const handleDeleteProfile = useCallback(async () => {
+    if (!window.electronAPI?.deleteApiProfile || !activeProfile) return
+    if ((apiProfiles?.profiles.length ?? 0) <= 1) return
+
+    const confirmed = window.confirm(`Delete API profile "${activeProfile.name}"?`)
+    if (!confirmed) return
+
+    setIsSwitchingProfile(true)
+    try {
+      await window.electronAPI.deleteApiProfile(activeProfile.id)
+      refreshCustomModel()
+      await loadConnectionInfo()
+    } finally {
+      setIsSwitchingProfile(false)
+    }
+  }, [activeProfile, apiProfiles?.profiles.length, loadConnectionInfo, refreshCustomModel])
+
   return (
     <div className="h-full flex flex-col">
       <PanelHeader title="App Settings" actions={<HeaderMenu route={routes.view.settings('app')} helpFeature="app-settings" />} />
@@ -213,6 +255,22 @@ export default function AppSettingsPage() {
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={handleOpenRenameProfile}
+                        disabled={isSwitchingProfile || !activeProfile}
+                      >
+                        Rename
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDeleteProfile}
+                        disabled={isSwitchingProfile || !activeProfile || (apiProfiles?.profiles.length ?? 0) <= 1}
+                      >
+                        Delete
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => setIsCreateProfileOpen(true)}
                         disabled={isSwitchingProfile}
                       >
@@ -249,6 +307,16 @@ export default function AppSettingsPage() {
               value={newProfileName}
               onValueChange={setNewProfileName}
               onSubmit={handleCreateProfile}
+              placeholder="Profile name"
+            />
+
+            <RenameDialog
+              open={isRenameProfileOpen}
+              onOpenChange={setIsRenameProfileOpen}
+              title="Rename API Profile"
+              value={renameProfileName}
+              onValueChange={setRenameProfileName}
+              onSubmit={handleRenameProfile}
               placeholder="Profile name"
             />
 

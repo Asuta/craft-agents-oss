@@ -194,9 +194,9 @@
   --z-sticky: 20;
   --z-titlebar: 40;
   --z-panel: 50;
-  --z-dropdown: 100;
-  --z-tooltip: 150;
-  --z-modal: 200;
+  --z-dropdown: 620;
+  --z-tooltip: 625;
+  --z-modal: 630;
   --z-overlay: 300;
   --z-fullscreen: 350;
   --z-floating-backdrop: 390;

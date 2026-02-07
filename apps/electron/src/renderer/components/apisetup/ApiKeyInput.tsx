@@ -32,6 +32,7 @@ export interface ApiKeySubmitData {
   apiKey: string
   baseUrl?: string
   customModel?: string
+  providerMode?: 'auto' | 'openai'
 }
 
 export interface ApiKeyInputProps {
@@ -47,7 +48,7 @@ export interface ApiKeyInputProps {
   disabled?: boolean
 }
 
-type PresetKey = 'anthropic' | 'openrouter' | 'vercel' | 'ollama' | 'gemini' | 'custom'
+type PresetKey = 'anthropic' | 'openrouter' | 'vercel' | 'openai' | 'ollama' | 'gemini' | 'custom'
 
 interface Preset {
   key: PresetKey
@@ -59,6 +60,7 @@ const PRESETS: Preset[] = [
   { key: 'anthropic', label: 'Anthropic', url: 'https://api.anthropic.com' },
   { key: 'openrouter', label: 'OpenRouter', url: 'https://openrouter.ai/api' },
   { key: 'vercel', label: 'Vercel AI Gateway', url: 'https://ai-gateway.vercel.sh' },
+  { key: 'openai', label: 'OpenAI', url: 'https://api.openai.com/v1' },
   { key: 'gemini', label: 'Google Gemini', url: 'https://generativelanguage.googleapis.com/v1beta' },
   { key: 'ollama', label: 'Ollama', url: 'http://localhost:11434' },
   { key: 'custom', label: 'Custom', url: '' },
@@ -81,6 +83,8 @@ export function ApiKeyInput({
   const [isProfileLoading, setIsProfileLoading] = useState(false)
   const [isCreateProfileOpen, setIsCreateProfileOpen] = useState(false)
   const [newProfileName, setNewProfileName] = useState('')
+  const [isRenameProfileOpen, setIsRenameProfileOpen] = useState(false)
+  const [renameProfileName, setRenameProfileName] = useState('')
 
   const [apiKey, setApiKey] = useState('')
   const [showValue, setShowValue] = useState(false)
@@ -97,6 +101,11 @@ export function ApiKeyInput({
       description: p.authType === 'oauth_token' ? 'Claude OAuth' : 'API Key',
     }))
   }, [apiProfiles])
+
+  const activeProfile = useMemo(
+    () => apiProfiles?.profiles.find((p) => p.id === activeProfileId) ?? null,
+    [apiProfiles, activeProfileId]
+  )
 
   const applySetupToForm = useCallback((setup: ApiSetupInfo) => {
     const nextBaseUrl = setup.anthropicBaseUrl ?? PRESETS[0].url
@@ -160,6 +169,43 @@ export function ApiKeyInput({
     }
   }, [newProfileName, reloadFromBackend])
 
+  const handleOpenRenameProfile = useCallback(() => {
+    if (!activeProfile) return
+    setRenameProfileName(activeProfile.name)
+    setIsRenameProfileOpen(true)
+  }, [activeProfile])
+
+  const handleRenameProfile = useCallback(async () => {
+    if (!window.electronAPI?.renameApiProfile || !activeProfile) return
+    const name = renameProfileName.trim()
+    if (!name) return
+
+    setIsProfileLoading(true)
+    try {
+      await window.electronAPI.renameApiProfile(activeProfile.id, name)
+      setIsRenameProfileOpen(false)
+      await reloadFromBackend()
+    } finally {
+      setIsProfileLoading(false)
+    }
+  }, [activeProfile, renameProfileName, reloadFromBackend])
+
+  const handleDeleteProfile = useCallback(async () => {
+    if (!window.electronAPI?.deleteApiProfile || !activeProfile) return
+    if ((apiProfiles?.profiles.length ?? 0) <= 1) return
+
+    const confirmed = window.confirm(`Delete API profile "${activeProfile.name}"?`)
+    if (!confirmed) return
+
+    setIsProfileLoading(true)
+    try {
+      await window.electronAPI.deleteApiProfile(activeProfile.id)
+      await reloadFromBackend()
+    } finally {
+      setIsProfileLoading(false)
+    }
+  }, [activeProfile, apiProfiles?.profiles.length, reloadFromBackend])
+
   const handlePresetSelect = (preset: Preset) => {
     setActivePreset(preset.key)
     if (preset.key === 'custom') {
@@ -171,6 +217,8 @@ export function ApiKeyInput({
     // (Anthropic hides the field entirely, others default to Claude model IDs when empty)
     if (preset.key === 'ollama') {
       setCustomModel('qwen3-coder')
+    } else if (preset.key === 'openai') {
+      setCustomModel('gpt-4o-mini')
     } else if (preset.key === 'gemini') {
       setCustomModel('models/gemini-2.0-flash')
     } else {
@@ -180,6 +228,9 @@ export function ApiKeyInput({
 
   const handleBaseUrlChange = (value: string) => {
     setBaseUrl(value)
+    // Keep OpenAI preset selected even when users type a custom OpenAI-compatible URL.
+    // This allows third-party OpenAI endpoints without auto-switching to "Custom".
+    if (activePreset === 'openai') return
     setActivePreset(getPresetForUrl(value))
   }
 
@@ -193,6 +244,7 @@ export function ApiKeyInput({
       apiKey: apiKey.trim(),
       baseUrl: isDefault ? undefined : effectiveBaseUrl,
       customModel: customModel.trim() || undefined,
+      providerMode: activePreset === 'openai' ? 'openai' : 'auto',
     })
   }
 
@@ -202,15 +254,35 @@ export function ApiKeyInput({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label>Profile</Label>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setIsCreateProfileOpen(true)}
-              disabled={isDisabled || isProfileLoading}
-            >
-              New
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleOpenRenameProfile}
+                disabled={isDisabled || isProfileLoading || !activeProfile}
+              >
+                Rename
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleDeleteProfile}
+                disabled={isDisabled || isProfileLoading || (apiProfiles?.profiles.length ?? 0) <= 1 || !activeProfile}
+              >
+                Delete
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsCreateProfileOpen(true)}
+                disabled={isDisabled || isProfileLoading}
+              >
+                New
+              </Button>
+            </div>
           </div>
           <div className="flex items-center justify-between gap-3">
             <SettingsMenuSelect
@@ -343,6 +415,13 @@ export function ApiKeyInput({
               </a>
             </p>
           )}
+          {activePreset === 'openai' && (
+            <p className="text-xs text-foreground/30">
+              Use OpenAI-compatible model IDs.
+              <br />
+              Format: <code className="text-foreground/40">gpt-4o-mini</code>, <code className="text-foreground/40">gpt-4.1</code>
+            </p>
+          )}
           {activePreset === 'ollama' && (
             <p className="text-xs text-foreground/30">
               Use any model pulled via <code className="text-foreground/40">ollama pull</code>. No API key required.
@@ -375,6 +454,16 @@ export function ApiKeyInput({
         value={newProfileName}
         onValueChange={setNewProfileName}
         onSubmit={handleCreateProfile}
+        placeholder="Profile name"
+      />
+
+      <RenameDialog
+        open={isRenameProfileOpen}
+        onOpenChange={setIsRenameProfileOpen}
+        title="Rename API Profile"
+        value={renameProfileName}
+        onValueChange={setRenameProfileName}
+        onSubmit={handleRenameProfile}
         placeholder="Profile name"
       />
     </form>

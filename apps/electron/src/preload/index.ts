@@ -180,8 +180,8 @@ const api: ElectronAPI = {
   getApiSetup: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_API_SETUP),
   updateApiSetup: (authType: AuthType, credential?: string, anthropicBaseUrl?: string | null, customModel?: string | null) =>
     ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_UPDATE_API_SETUP, authType, credential, anthropicBaseUrl, customModel),
-  testApiConnection: (apiKey: string, baseUrl?: string, modelName?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_API_CONNECTION, apiKey, baseUrl, modelName),
+  testApiConnection: (apiKey: string, baseUrl?: string, modelName?: string, providerMode?: 'auto' | 'openai') =>
+    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_API_CONNECTION, apiKey, baseUrl, modelName, providerMode),
 
   // Settings - API Profiles
   getApiProfiles: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_API_PROFILES),

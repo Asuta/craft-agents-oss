@@ -113,6 +113,7 @@ async function checkCapturedApiError(): Promise<CheckResult> {
  */
 function getProviderLabel(baseUrl: string): string {
   if (baseUrl.includes('generativelanguage.googleapis.com') || baseUrl.includes('/v1beta')) return 'Google Gemini';
+  if (baseUrl.includes('api.openai.com')) return 'OpenAI';
   if (baseUrl.includes('openrouter')) return 'OpenRouter';
   if (baseUrl.includes('ai-gateway.vercel.sh')) return 'Vercel AI Gateway';
   if (baseUrl.includes('anthropic')) return 'Anthropic';

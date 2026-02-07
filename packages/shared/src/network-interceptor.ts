@@ -175,6 +175,54 @@ function normalizeGeminiModelId(model: string): string {
   return `models/${trimmed}`;
 }
 
+function isOpenAIBaseUrl(baseUrl: string): boolean {
+  const trimmed = baseUrl.trim().toLowerCase();
+  if (!trimmed) return false;
+  try {
+    const u = new URL(trimmed);
+    const host = u.hostname.toLowerCase();
+    if (host === 'api.openai.com') return true;
+    if (host === 'api.kimi.com') return true;
+    if (host === 'open.bigmodel.cn' || host.endsWith('.bigmodel.cn')) return true;
+    const path = u.pathname.toLowerCase();
+    if (
+      /\/v\d+/.test(path) &&
+      !host.includes('anthropic') &&
+      !host.includes('openrouter.ai') &&
+      !host.includes('ai-gateway.vercel.sh') &&
+      host !== 'generativelanguage.googleapis.com'
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    if (trimmed.includes('api.openai.com/v1')) return true;
+    if (trimmed.includes('api.kimi.com') && trimmed.includes('/v1')) return true;
+    if (trimmed.includes('bigmodel.cn')) return true;
+    return false;
+  }
+}
+
+function normalizeOpenAIBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  try {
+    const u = new URL(trimmed);
+    const pathname = u.pathname.replace(/\/+$/, '');
+    u.pathname = pathname.endsWith('/chat/completions')
+      ? pathname.slice(0, -'/chat/completions'.length)
+      : pathname;
+    return u.toString().replace(/\/+$/, '');
+  } catch {
+    return trimmed.replace(/\/chat\/completions$/, '');
+  }
+}
+
+function normalizeOpenAIModelId(model: string): string {
+  const trimmed = model.trim();
+  if (!trimmed) return 'gpt-4o-mini';
+  return trimmed;
+}
+
 function extractSystemText(system: unknown): string | undefined {
   if (!system) return undefined;
   if (typeof system === 'string') return system;
@@ -490,6 +538,119 @@ function buildGeminiContents(messages: unknown): {
   return { contents, toolUseIdToName };
 }
 
+type OpenAIMessage = {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content?: string;
+  tool_call_id?: string;
+  name?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }>;
+};
+
+function buildOpenAIChatMessages(messages: unknown, system: unknown): OpenAIMessage[] {
+  const out: OpenAIMessage[] = [];
+  const toolUseIdToName: Record<string, string> = {};
+
+  const systemText = extractSystemText(system);
+  if (systemText) out.push({ role: 'system', content: systemText });
+  if (!Array.isArray(messages)) return out;
+
+  for (const m of messages) {
+    if (!m || typeof m !== 'object') continue;
+    const roleRaw = (m as any).role;
+    const content = (m as any).content;
+
+    if (typeof content === 'string') {
+      out.push({ role: roleRaw === 'assistant' ? 'assistant' : 'user', content });
+      continue;
+    }
+    if (!Array.isArray(content)) continue;
+
+    const textChunks: string[] = [];
+    const toolCalls: NonNullable<OpenAIMessage['tool_calls']> = [];
+
+    for (const block of content) {
+      if (!block || typeof block !== 'object') continue;
+      const type = (block as any).type;
+
+      if (type === 'text' && typeof (block as any).text === 'string') {
+        textChunks.push((block as any).text);
+        continue;
+      }
+
+      if (type === 'tool_use') {
+        const id = typeof (block as any).id === 'string' && (block as any).id
+          ? (block as any).id
+          : `toolu_${randomUUID()}`;
+        const name = typeof (block as any).name === 'string' ? (block as any).name : '';
+        if (!name) continue;
+        toolUseIdToName[id] = name;
+        const args = (block as any).input && typeof (block as any).input === 'object'
+          ? JSON.stringify((block as any).input)
+          : '{}';
+        toolCalls.push({ id, type: 'function', function: { name, arguments: args } });
+        continue;
+      }
+
+      if (type === 'tool_result') {
+        const toolUseId = typeof (block as any).tool_use_id === 'string' ? (block as any).tool_use_id : '';
+        if (!toolUseId) continue;
+        const name = toolUseIdToName[toolUseId];
+        out.push({
+          role: 'tool',
+          tool_call_id: toolUseId,
+          ...(name ? { name } : {}),
+          content: typeof (block as any).content === 'string'
+            ? (block as any).content
+            : JSON.stringify((block as any).content ?? ''),
+        });
+      }
+    }
+
+    if (roleRaw === 'assistant') {
+      if (toolCalls.length > 0 || textChunks.length > 0) {
+        out.push({
+          role: 'assistant',
+          ...(textChunks.length > 0 ? { content: textChunks.join('\n').trim() } : {}),
+          ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+        });
+      }
+    } else if (textChunks.length > 0) {
+      out.push({ role: 'user', content: textChunks.join('\n').trim() });
+    }
+  }
+
+  return out;
+}
+
+function buildOpenAITools(tools: unknown): Array<{ type: 'function'; function: { name: string; description?: string; parameters?: unknown } }> | undefined {
+  if (!Array.isArray(tools) || tools.length === 0) return undefined;
+
+  const out: Array<{ type: 'function'; function: { name: string; description?: string; parameters?: unknown } }> = [];
+  for (const t of tools) {
+    if (!t || typeof t !== 'object') continue;
+    const name = (t as any).name;
+    if (typeof name !== 'string' || !name) continue;
+    const description = typeof (t as any).description === 'string' ? (t as any).description : undefined;
+    const parameters = (t as any).input_schema && typeof (t as any).input_schema === 'object'
+      ? (t as any).input_schema
+      : undefined;
+    out.push({
+      type: 'function',
+      function: {
+        name,
+        ...(description ? { description } : {}),
+        ...(parameters ? { parameters } : {}),
+      },
+    });
+  }
+
+  return out.length > 0 ? out : undefined;
+}
+
 function geminiFinishReasonToStopReason(reason: unknown, hasToolUse: boolean): string {
   if (hasToolUse) return 'tool_use';
   const r = typeof reason === 'string' ? reason.toUpperCase() : '';
@@ -582,6 +743,104 @@ function buildAnthropicMessageFromGeminiResponse(
       const input = block.input;
       pushEvent('content_block_start', { type: 'content_block_start', index: i, content_block: { type: 'tool_use', id: block.id, name: block.name, input: {} } });
       pushEvent('content_block_delta', { type: 'content_block_delta', index: i, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } });
+      pushEvent('content_block_stop', { type: 'content_block_stop', index: i });
+    }
+  }
+
+  pushEvent('message_delta', {
+    type: 'message_delta',
+    delta: { stop_reason: stopReason, stop_sequence: null },
+    usage: { output_tokens: outputTokens },
+  });
+  pushEvent('message_stop', { type: 'message_stop' });
+
+  return { message, streamEvents: events.join('') };
+}
+
+function openAIFinishReasonToStopReason(reason: unknown, hasToolUse: boolean): string {
+  if (hasToolUse) return 'tool_use';
+  const r = typeof reason === 'string' ? reason.toLowerCase() : '';
+  if (r === 'length') return 'max_tokens';
+  return 'end_turn';
+}
+
+function buildAnthropicMessageFromOpenAIResponse(
+  openaiJson: any,
+  requestedModel: string,
+  streamRequested: boolean
+): { message: any; streamEvents?: string } {
+  const choice = Array.isArray(openaiJson?.choices) ? openaiJson.choices[0] : undefined;
+  const msg = choice?.message ?? {};
+
+  const blocks: AnthropicContentBlock[] = [];
+  if (typeof msg.content === 'string' && msg.content.trim()) {
+    blocks.push({ type: 'text', text: msg.content });
+  }
+
+  const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+  for (const call of toolCalls) {
+    const name = call?.function?.name;
+    if (typeof name !== 'string' || !name) continue;
+    const id = typeof call?.id === 'string' && call.id ? call.id : `toolu_${randomUUID()}`;
+    let input: Record<string, unknown> = {};
+    const rawArgs = call?.function?.arguments;
+    if (typeof rawArgs === 'string' && rawArgs.trim()) {
+      try {
+        const parsed = JSON.parse(rawArgs);
+        if (parsed && typeof parsed === 'object') input = parsed as Record<string, unknown>;
+      } catch {
+        input = {};
+      }
+    }
+    blocks.push({ type: 'tool_use', id, name, input });
+  }
+
+  const usage = openaiJson?.usage;
+  const inputTokens = typeof usage?.prompt_tokens === 'number' ? usage.prompt_tokens : 0;
+  const outputTokens = typeof usage?.completion_tokens === 'number' ? usage.completion_tokens : 0;
+  const hasToolUse = blocks.some((b) => b.type === 'tool_use');
+  const stopReason = openAIFinishReasonToStopReason(choice?.finish_reason, hasToolUse);
+
+  const message = {
+    id: `msg_${randomUUID()}`,
+    type: 'message',
+    role: 'assistant',
+    model: requestedModel,
+    content: blocks,
+    stop_reason: stopReason,
+    stop_sequence: null,
+    usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+    },
+  };
+
+  if (!streamRequested) return { message };
+
+  const streamStartMessage = {
+    ...message,
+    content: [],
+    stop_reason: null,
+  };
+
+  const events: string[] = [];
+  const pushEvent = (event: string, data: unknown) => {
+    events.push(`event: ${event}\n`);
+    events.push(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  pushEvent('message_start', { type: 'message_start', message: streamStartMessage });
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    if (!block) continue;
+    if (block.type === 'text') {
+      pushEvent('content_block_start', { type: 'content_block_start', index: i, content_block: { type: 'text', text: '' } });
+      pushEvent('content_block_delta', { type: 'content_block_delta', index: i, delta: { type: 'text_delta', text: block.text } });
+      pushEvent('content_block_stop', { type: 'content_block_stop', index: i });
+    } else {
+      pushEvent('content_block_start', { type: 'content_block_start', index: i, content_block: { type: 'tool_use', id: block.id, name: block.name, input: {} } });
+      pushEvent('content_block_delta', { type: 'content_block_delta', index: i, delta: { type: 'input_json_delta', partial_json: JSON.stringify(block.input) } });
       pushEvent('content_block_stop', { type: 'content_block_stop', index: i });
     }
   }
@@ -706,7 +965,7 @@ function headersToCurl(headers: HeadersInitType | undefined): string {
         ? Object.fromEntries(headers)
         : (headers as Record<string, string>);
 
-  const sensitiveKeys = ['x-api-key', 'x-goog-api-key', 'authorization', 'cookie'];
+  const sensitiveKeys = ['x-api-key', 'x-goog-api-key', 'api-key', 'authorization', 'cookie'];
 
   return Object.entries(headerObj)
     .map(([key, value]) => {
@@ -859,6 +1118,7 @@ async function interceptedFetch(
 
         const configuredBaseUrl = getConfiguredBaseUrl();
         const isGemini = isGeminiBaseUrl(configuredBaseUrl);
+        const isOpenAI = isOpenAIBaseUrl(configuredBaseUrl);
 
         if (isGemini) {
           const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
@@ -914,6 +1174,73 @@ async function interceptedFetch(
 
           const geminiJson = text ? JSON.parse(text) : {};
           const { message, streamEvents } = buildAnthropicMessageFromGeminiResponse(geminiJson, requestedModel, streamRequested);
+          const adaptedResponse = streamRequested && streamEvents
+            ? createSseResponse(streamEvents, 200)
+            : new Response(JSON.stringify(message), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+          return logResponse(adaptedResponse, url, startTime);
+        }
+
+        if (isOpenAI) {
+          const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+          if (!apiKey) {
+            const missingKeyResponse = new Response(JSON.stringify({ error: { message: 'Missing API key for OpenAI provider' } }), {
+              status: 401,
+              headers: { 'Content-Type': 'application/json' },
+            });
+            return logResponse(missingKeyResponse, url, startTime);
+          }
+
+          const streamRequested = Boolean((parsed as any).stream);
+          const requestedModel = normalizeOpenAIModelId(String((parsed as any).model ?? ''));
+          const messages = buildOpenAIChatMessages((parsed as any).messages, (parsed as any).system);
+          const tools = buildOpenAITools((parsed as any).tools);
+
+          const openAiRequest: Record<string, unknown> = {
+            model: requestedModel,
+            messages,
+            stream: false,
+          };
+
+          if (typeof (parsed as any).max_tokens === 'number') openAiRequest.max_tokens = (parsed as any).max_tokens;
+          if (typeof (parsed as any).temperature === 'number') openAiRequest.temperature = (parsed as any).temperature;
+          if (typeof (parsed as any).top_p === 'number') openAiRequest.top_p = (parsed as any).top_p;
+          if (tools) {
+            openAiRequest.tools = tools;
+            openAiRequest.tool_choice = 'auto';
+          }
+
+          const base = normalizeOpenAIBaseUrl(configuredBaseUrl);
+          const endpoint = `${base}/chat/completions`;
+          const upstreamResponse = await originalFetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(openAiRequest),
+          });
+
+          const text = await upstreamResponse.text();
+          if (!upstreamResponse.ok) {
+            let message = text || upstreamResponse.statusText;
+            try {
+              const errorJson = text ? JSON.parse(text) : {};
+              if (typeof errorJson?.error?.message === 'string' && errorJson.error.message) {
+                message = errorJson.error.message;
+              }
+            } catch {
+              // keep raw text
+            }
+            const errorResponse = new Response(JSON.stringify({ error: { message } }), {
+              status: upstreamResponse.status,
+              headers: { 'Content-Type': 'application/json' },
+            });
+            return logResponse(errorResponse, url, startTime);
+          }
+
+          const openAiJson = text ? JSON.parse(text) : {};
+          const { message, streamEvents } = buildAnthropicMessageFromOpenAIResponse(openAiJson, requestedModel, streamRequested);
           const adaptedResponse = streamRequested && streamEvents
             ? createSseResponse(streamEvents, 200)
             : new Response(JSON.stringify(message), { status: 200, headers: { 'Content-Type': 'application/json' } });

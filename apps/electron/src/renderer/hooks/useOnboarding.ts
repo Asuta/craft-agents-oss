@@ -235,6 +235,7 @@ export function useOnboarding({
         data.apiKey,
         data.baseUrl,
         data.customModel,
+        data.providerMode,
       )
 
       if (!testResult.success) {

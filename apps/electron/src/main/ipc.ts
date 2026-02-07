@@ -1338,7 +1338,7 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
   })
 
   // Test API connection (validates API key, base URL, and optionally custom model)
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_TEST_API_CONNECTION, async (_event, apiKey: string, baseUrl?: string, modelName?: string): Promise<{ success: boolean; error?: string; modelCount?: number }> => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_TEST_API_CONNECTION, async (_event, apiKey: string, baseUrl?: string, modelName?: string, providerMode?: 'auto' | 'openai'): Promise<{ success: boolean; error?: string; modelCount?: number }> => {
     const trimmedKey = apiKey?.trim()
     const trimmedUrl = baseUrl?.trim()
 
@@ -1352,8 +1352,16 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
       }
     })()
 
+    // Do not run Anthropic endpoint recognition in connection testing.
+    // Non-Gemini providers are always tested via OpenAI-compatible /chat/completions.
+    const isOpenAI = !isGemini
+
     if (isGemini && !trimmedKey) {
       return { success: false, error: 'API key is required for Google Gemini' }
+    }
+
+    if (isOpenAI && !trimmedKey) {
+      return { success: false, error: 'API key is required for OpenAI' }
     }
 
     // Require API key unless a custom base URL is provided (e.g. Ollama needs no key)
@@ -1411,55 +1419,59 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
         return { success: true }
       }
 
-      // Unified test: send a minimal POST to /v1/messages with a tool definition.
-      // This validates connection, auth, model existence, and tool support in one call.
-      // Works identically for Anthropic, OpenRouter, Vercel AI Gateway, and Ollama (v0.14+).
-      const Anthropic = (await import('@anthropic-ai/sdk')).default
+      if (isOpenAI) {
+        const base = (() => {
+          const cleaned = (trimmedUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
+          try {
+            const u = new URL(cleaned)
+            const pathname = u.pathname.replace(/\/+$/, '')
+            u.pathname = pathname.endsWith('/chat/completions') ? pathname.slice(0, -'/chat/completions'.length) : pathname
+            return u.toString().replace(/\/+$/, '')
+          } catch {
+            return cleaned.replace(/\/chat\/completions$/, '')
+          }
+        })()
 
-      // Auth strategy:
-      // - Custom base URL: pass key as authToken (SDK sends Authorization: Bearer,
-      //   which OpenRouter, Vercel AI Gateway, and Ollama all accept).
-      //   Explicitly null the other auth param to prevent SDK from reading env vars.
-      // - Anthropic direct: pass as apiKey (SDK sends x-api-key header)
-      const client = new Anthropic({
-        ...(trimmedUrl ? { baseURL: trimmedUrl } : {}),
-        ...(trimmedUrl
-          ? { authToken: trimmedKey || 'ollama', apiKey: null }  // Bearer for custom URLs; 'ollama' dummy for no-key local APIs
-          : { apiKey: trimmedKey, authToken: null }              // x-api-key for Anthropic direct
-        ),
-      })
+        const testModel = modelName?.trim() || 'gpt-4o-mini'
+        const response = await fetch(`${base}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${trimmedKey}`,
+          },
+          body: JSON.stringify({
+            model: testModel,
+            max_tokens: 16,
+            messages: [{ role: 'user', content: 'hi' }],
+            tools: [{
+              type: 'function',
+              function: {
+                name: 'test_tool',
+                description: 'Test tool for validation',
+                parameters: { type: 'object', properties: {} },
+              }
+            }],
+            tool_choice: 'auto',
+          }),
+        })
 
-      // Determine test model: user-specified model takes priority, otherwise use
-      // the default Haiku model for known providers (validates full pipeline).
-      // Custom endpoints MUST specify a model — there's no sensible default.
-      const userModel = modelName?.trim()
-      let testModel: string
-      if (userModel) {
-        testModel = userModel
-      } else if (!trimmedUrl || trimmedUrl.includes('openrouter.ai') || trimmedUrl.includes('ai-gateway.vercel.sh')) {
-        // Anthropic, OpenRouter, and Vercel are all Anthropic-compatible — same model IDs
-        testModel = SUMMARIZATION_MODEL
-      } else {
-        // Custom endpoint with no model specified — can't test without knowing the model
-        return { success: false, error: 'Please specify a model for custom endpoints' }
+        if (!response.ok) {
+          const body = await response.text().catch(() => '')
+          const msg = (body || response.statusText).toLowerCase()
+          if (response.status === 401 || response.status === 403 || msg.includes('api key') || msg.includes('invalid_api_key')) {
+            return { success: false, error: 'Invalid API key' }
+          }
+          if (msg.includes('model') && (msg.includes('not found') || msg.includes('invalid') || msg.includes('does not exist'))) {
+            return { success: false, error: `Model "${testModel}" not found. Check the model name and try again.` }
+          }
+          if (msg.includes('tool') && msg.includes('not') && msg.includes('support')) {
+            return { success: false, error: `Model "${testModel}" does not support tool/function calling. Craft Agent requires tool support.` }
+          }
+          return { success: false, error: body.slice(0, 300) || response.statusText }
+        }
+
+        return { success: true }
       }
-
-      // OpenAI models via providers like OpenRouter require max_tokens >= 16
-      // See: https://github.com/langgenius/dify-official-plugins/issues/1694
-      await client.messages.create({
-        model: testModel,
-        max_tokens: 16,
-        messages: [{ role: 'user', content: 'hi' }],
-        // Include a tool to validate tool/function calling support
-        tools: [{
-          name: 'test_tool',
-          description: 'Test tool for validation',
-          input_schema: { type: 'object' as const, properties: {} }
-        }]
-      })
-
-      // 200 response — everything works (auth, endpoint, model, tool support)
-      return { success: true }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       const lowerMsg = msg.toLowerCase()
@@ -1470,9 +1482,9 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
         return { success: false, error: 'Cannot connect to API server. Check the URL and ensure the server is running.' }
       }
 
-      // 404 on endpoint — /v1/messages doesn't exist (wrong URL or Ollama < v0.14)
+      // 404 on endpoint — OpenAI-compatible /chat/completions not found
       if (lowerMsg.includes('404') && !lowerMsg.includes('model')) {
-        return { success: false, error: 'Endpoint not found. Ensure the server supports the Anthropic Messages API (/v1/messages). For Ollama, version 0.14+ is required.' }
+        return { success: false, error: 'Endpoint not found. Ensure the server supports OpenAI-compatible Chat Completions (/chat/completions).' }
       }
 
       // Auth errors
